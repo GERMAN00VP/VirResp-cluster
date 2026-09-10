@@ -1,0 +1,18 @@
+name: vrg_phylo_v1
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Alineamiento y procesado
+  - mafft=7.*
+  - fasttree=2.*
+  - seqkit
+  - cd-hit
+  # Filogenia y modelos
+  - iqtree=2.*
+  - raxml-ng
+  - modeltest-ng
+  # Filogenia Bayesiana
+  - beast2
+  - beagle-lib
