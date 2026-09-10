@@ -1,4 +1,4 @@
-name: vrg_phylo_v1
+name: miniresp
 channels:
   - conda-forge
   - bioconda
