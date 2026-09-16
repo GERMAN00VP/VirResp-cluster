@@ -30,7 +30,7 @@ fi
 
 INPUT_FASTA="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_FASTA")"
-MASTER_SCRIPT="/data/cnm/vrg/scripts/master_iqtree.sh"
+MASTER_SCRIPT="/data/cnm/vrg/VirResp-cluster/scripts/master_iqtree.sh"
 
 # Verificación de existencia del script ejecutor
 if [ ! -x "$MASTER_SCRIPT" ]; then

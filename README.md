@@ -83,7 +83,7 @@ Envía el archivo desde tu ordenador al directorio de tu usuario dentro del clú
 
 ```bash
 # Sustituye 'tu_usuario' por tu nombre de usuario del clúster
-rsync -avz -e "ssh -p 32122" ./mis_secuencias.fasta tu_usuario@portutatis.isciii.es:/data/cnm/vrg/tu_usuario/
+rsync -avz -e "ssh -p < numero de puerto >" ./mis_secuencias.fasta tu_usuario@host:/ruta/carpeta/grupo/tu_usuario/
 ```
 
 
@@ -96,7 +96,7 @@ Abre la conexión remota con el servidor de cómputo introduciendo tu clave pers
 
 
 ```bash
-ssh -p 32122 tu_usuario@portutatis.isciii.es
+ssh -p < numero de puerto > tu_usuario@host
 ```
 
 
@@ -109,7 +109,7 @@ Dirígete a tu carpeta de usuario y verifica la presencia del archivo subido.
 
 
 ```bash
-cd /data/cnm/vrg/tu_usuario/
+cd /ruta/carpeta/grupo/tu_usuario/
 ls -l
 ```
 
@@ -126,7 +126,7 @@ Elimina secuencias idénticas o redundantes antes de realizar el alineamiento.
 
 
 ```bash
-/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_cdhit.sh mis_secuencias.fasta
+/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_cdhit.sh mis_secuencias.fasta
 ```
 
 
@@ -138,7 +138,7 @@ Alinea las secuencias representativas obtenidas en el paso anterior.
 
 
 ```bash
-/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_mafft.sh mis_secuencias_representatives.fasta
+/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_mafft.sh mis_secuencias_representatives.fasta
 ```
 
 
@@ -159,7 +159,7 @@ Genera un árbol de Máxima Verosimilitud (ML) a partir del alineamiento.
 
 
 ```bash
-/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_iqtree.sh mis_secuencias_representatives_aligned.fasta
+/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_iqtree.sh mis_secuencias_representatives_aligned.fasta
 ```
 
 
@@ -173,7 +173,7 @@ Si has preparado previamente un archivo `.xml` en BEAUti en tu ordenador local:
 
 
 ```bash
-/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_beast.sh mi_analisis.xml
+/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_beast.sh mi_analisis.xml
 ```
 
 ---
@@ -185,7 +185,7 @@ Una vez finalizados los trabajos en el clúster, vuelve a la terminal de tu orde
 
 
 ```bash
-rsync -avz -e "ssh -p 32122" tu_usuario@portutatis.isciii.es:/data/cnm/vrg/tu_usuario/ ./resultados_virresp/
+rsync -avz -e "ssh -p < numero de puerto >" tu_usuario@host:/ruta/carpeta/grupo/tu_usuario/ ./resultados_virresp/
 ```
 
 
@@ -199,7 +199,7 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 
 ### 1. Lanzador de CD-HIT (`lanzar_cdhit.sh`)
 
-* **Uso:** `/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_cdhit.sh <archivo.fasta>`
+* **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_cdhit.sh <archivo.fasta>`
 * **Valida e inspecciona:** Comprueba la existencia del archivo, valida que contenga cabeceras FASTA (`>`), cuenta el número total de secuencias y calcula la longitud media en pares de bases (bp).
 
 #### Opciones interactivas que te solicitará:
@@ -220,7 +220,7 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 
 ### 2. Lanzador de MAFFT (`lanzar_mafft.sh`)
 
-* **Uso:** `/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_mafft.sh <archivo.fasta>`
+* **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_mafft.sh <archivo.fasta>`
 * **Valida e inspecciona:** Comprueba el formato FASTA, cuenta el número de muestras y evalúa la longitud media.
 
 #### Opciones interactivas que te solicitará:
@@ -242,7 +242,7 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 
 ### 3. Lanzador de IQ-TREE 2 (`lanzar_iqtree.sh`)
 
-* **Uso:** `/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_iqtree.sh <alineamiento.fasta>`
+* **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_iqtree.sh <alineamiento.fasta>`
 * **Valida e inspecciona:** Comprueba la validez del alineamiento y calcula la longitud exacta del alineamiento incluyendo gaps/N.
 
 #### Opciones interactivas que te solicitará:
@@ -268,7 +268,7 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 
 ### 4. Lanzador de BEAST + BEAGLE (`lanzar_beast.sh`)
 
-* **Uso:** `/data/cnm/vrg/VirResp-cluster/plantillas/lanzar_beast.sh <analisis.xml>`
+* **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_beast.sh <analisis.xml>`
 * **Valida e inspecciona:** Comprueba que el XML existe, elimina saltos de línea incompatibles de Windows (`\r`) y extrae automáticamente la longitud de la cadena MCMC (`chainLength`) mediante expresiones regulares.
 
 #### Opciones interactivas que te solicitará:

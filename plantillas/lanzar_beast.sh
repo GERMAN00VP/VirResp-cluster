@@ -31,7 +31,7 @@ fi
 
 INPUT_XML="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_XML")"
-MASTER_SCRIPT="/data/cnm/vrg/scripts/master_beast.sh"
+MASTER_SCRIPT="/data/cnm/vrg/VirResp-cluster/scripts/master_beast.sh"
 
 # Verificar existencia y permisos del script maestro ejecutor (Fix 8)
 if [ ! -x "$MASTER_SCRIPT" ]; then
