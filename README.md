@@ -169,11 +169,12 @@ Si has preparado previamente un archivo `.xml` en BEAUti en tu ordenador local:
 * **Entrada:** `mi_analisis.xml`
 * **Salida esperada:** Carpeta `mi_analisis_beast_results/` con archivos `.log` y `.trees`.
 
+> ⚠️ **Importante:** el archivo `.xml` generado por BEAUti ya contiene **toda la información** (secuencias alineadas + configuración del modelo). No necesitas subir el FASTA ni el NEXUS al clúster. Solo el XML.
+
 
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_beast.sh mi_analisis.xml
 ```
-
 
 ---
 
@@ -287,7 +288,7 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 
 ## 📊 Monitoreo y Gestión de Trabajos en Slurm
 
-Todos los lanzadores interactivos dirigen las salidas de texto y errores a archivos situados en la misma carpeta donde ejecutas el script.
+Los lanzadores interactivos guardan los archivos de salida y de error en el mismo directorio donde está tu archivo de entrada (el FASTA o el XML que le pasas como argumento). Por eso se recomienda ejecutar el script desde esa misma carpeta: así los logs quedan junto a tus datos y resultados.
 
 ### Archivos de salida de Slurm generados:
 * `cdhit_<JOB_ID>.out` / `cdhit_<JOB_ID>.err`
