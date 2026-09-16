@@ -1,319 +1,320 @@
 
-
-# Manual del Clúster HPC - Grupo de Virus Respiratorios (VirResp)
-
-Bienvenido al repositorio central de herramientas bioinformáticas del grupo VirResp. Este sistema está diseñado para que puedas ejecutar análisis de alineamiento, desduplicación y filogenia sin necesidad de programar ni configurar manualmente el gestor de colas del clúster.
+# GUÍA DE USO Y FLUJO DE TRABAJO EN EL CLÚSTER (VirResp)
 
 ---
 
-## Índice de Navegación Rápida
+## 🎯 EJEMPLO DE FLUJO DE TRABAJO (LO QUE VAMOS A HACER)
 
-### Guía Rápida
-* [Comandos exprés de Slurm](#comandos-exprés-de-slurm)
-* [Estructura del Repositorio](#estructura-del-repositorio)
-* [Flujo de Trabajo Interactivo en 3 Pasos](#flujo-de-trabajo-interactivo-en-3-pasos)
-* [Subir y Bajar Datos del Clúster](#subir-y-bajar-datos-del-clúster)
+Para aprender a usar el sistema rápidamente, realizaremos un análisis filogenético completo a partir de un archivo de secuencias llamado `dummy.fasta`.
 
----
-
-### Guía Detallada
-1. [Antes de Empezar: Requisitos](#1-antes-de-empezar-requisitos)
-2. [Comandos Básicos de Linux](#2-comandos-básicos-de-linux)
-3. [Cómo Funciona el Clúster y Slurm](#3-cómo-funciona-el-clúster-y-slurm)
-4. [Entorno Conda: ¿Qué necesito activar?](#4-entorno-conda-qué-necesito-activar)
-5. [Guía de Herramientas Disponibles](#5-guía-de-herramientas-disponibles)
-   * [MAFFT (Alineamiento de Secuencias)](#mafft-alineamiento-de-secuencias)
-   * [CD-HIT (Haplotipado y Desduplicación)](#cd-hit-haplotipado-y-desduplicación)
-   * [IQ-TREE (Filogenia por Máxima Verosimilitud)](#iq-tree-filogenia-por-máxima-verosimilitud)
-   * [BEAST (Relojes Moleculares y Filodinámica)](#beast-relojes-moleculares-y-filodinámica)
-6. [Resolución de Errores Típicos](#6-resolución-de-errores-típicos)
-
----
-
-## Comandos exprés de Slurm
-
-`squeue -u $USER` : Muestra tus trabajos en ejecución o en espera.  
-`scancel <JOB_ID>` : Cancela un trabajo específico (ejemplo: `scancel 123456`).  
-`scancel -u $USER` : Cancela TODOS tus trabajos activos.  
-`sinfo` : Muestra la disponibilidad de los nodos del clúster.  
-
----
-
-## Estructura del Repositorio
-
-El proyecto `VirResp-cluster` está organizado en dos niveles para evitar modificaciones accidental del código de cómputo:
+El flujo de trabajo estándar en el clúster consta de 3 fases principales:
 
 
 ```text
-VirResp-cluster/
-├── environment.yml       <-- Uso exclusivo del administrador (Germán)
-├── README.md             <-- Este manual de instrucciones
-├── plantillas/           <-- Scripts INTERACTIVOS que ejecuta el usuario
-│   ├── lanzar_mafft.sh
-│   ├── lanzar_cdhit.sh
-│   ├── lanzar_iqtree.sh
-│   └── lanzar_beast.sh
-└── scripts/              <-- Scripts MAESTROS gestionados por el sistema
-    ├── master_mafft.sh
-    ├── master_cdhit.sh
-    ├── master_iqtree.sh
-    └── master_beast.sh
+[Secuencias raw] ──> 1. CD-HIT ──> 2. MAFFT ──> 3. IQ-TREE ──> [Árbol Filogenético]
+                  (Limpieza)     (Alineamiento)   (Reconstrucción)
 ```
 
 
-### Arquitectura de Ejecución
+1. **CD-HIT**: Elimina secuencias duplicadas o altamente idénticas para reducir redundancia.
+2. **MAFFT**: Alinea las secuencias de nucleótidos o aminoácidos.
+3. **IQ-TREE**: Construye el árbol filogenético por Máxima Verosimilitud (Maximum Likelihood).
+
+*(Nota: En la carpeta de plantillas del repositorio en el clúster `/data/cnm/vrg/VirResp-cluster` ya están creados y optimizados todos los scripts. **No tienes que modificar ningún archivo ni script interno**, únicamente copiarlos a tu carpeta de trabajo y ejecutarlos).*
+
+---
+
+## ⚡ GUÍA DE USO RÁPIDO (PASO A PASO)
+
+Sigue esta secuencia de comandos de inicio a fin. Copia y pega directamente ajustando solo tu usuario.
+
+---
+
+### 🔷 PASO 1: LOCALIZAR TUS ARCHIVOS EN LOCAL
+
+> 🟦 **ENTORNO: TU ORDENADOR (LOCAL)**
+
+Abre la terminal de tu ordenador y navega hasta la carpeta donde tienes tu archivo de trabajo (por ejemplo `dummy.fasta`).
+
+
+```bash
+# Navegar a la carpeta donde tienes tu archivo
+cd /ruta/a/tu/carpeta/local
+
+# Comprobar que el archivo dummy.fasta está ahí
+ls
+```
+
+
+---
+
+### 🔷 PASO 2: SUBIR ARCHIVOS AL CLÚSTER CON RSYNC
+
+> 🟦 **ENTORNO: TU ORDENADOR (LOCAL)**
+
+Envía tu archivo `dummy.fasta` (o `.xml`) desde tu ordenador al clúster. Al ejecutar el comando te pedirá tu contraseña de usuario del clúster.
+
+
+```bash
+# Sintaxis general:
+# rsync -avz -e "ssh -p 32122" ./archivo.extension usuario@portutatis.isciii.es:/data/cnm/vrg/usuario/
+
+# Ejemplo práctico enviando el archivo dummy.fasta:
+rsync -avz -e "ssh -p 32122" ./dummy.fasta usuario@portutatis.isciii.es:/data/cnm/vrg/usuario/
+```
+
+
+---
+
+### 🟩 PASO 3: ABRIR TERMINAL Y ACCEDER AL CLÚSTER
+
+> 🟩 **ENTORNO: CLÚSTER (PORTUTATIS)**
+
+Abre una nueva ventana o pestaña de la terminal para conectarte al clúster por SSH e introduce tu contraseña.
+
+
+```bash
+ssh -p 32122 usuario@portutatis.isciii.es
+```
+
+
+---
+
+### 🟩 PASO 4: NAVEGAR A TU CARPETA Y VERIFICAR EL ARCHIVO
+
+> 🟩 **ENTORNO: CLÚSTER (PORTUTATIS)**
+
+Una vez dentro del clúster, muévete a tu directorio personal de trabajo y comprueba que `dummy.fasta` ha llegado correctamente.
+
+
+```bash
+# Ir a tu carpeta de trabajo en el clúster
+cd /data/cnm/vrg/usuario/
+
+# Listar los archivos para confirmar que dummy.fasta está dentro
+ls -l
+```
+
+
+---
+
+### 🟩 PASO 5: EJECUTAR EL FLUJO DE TRABAJO (CD-HIT ➔ MAFFT ➔ IQ-TREE)
+
+> 🟩 **ENTORNO: CLÚSTER (PORTUTATIS)**
+
+Los scripts maestro y plantillas están preconfigurados en la ruta `/data/cnm/vrg/VirResp-cluster`. No cambies nada de esos archivos. Para lanzar cada tarea, simplemente ejecuta el comando máster correspondiente pasando como parámetro tu archivo de entrada.
+
+#### 5.1. CD-HIT (Filtrado de redundancia)
+Lanza el filtrado de secuencias sobre `dummy.fasta`. Generará el archivo de salida `dummy_cdhit.fasta`.
+
+
+```bash
+/data/cnm/vrg/VirResp-cluster/scripts/master_cdhit.sh dummy.fasta
+```
+
+> 🔗 [*Ver explicación detallada y parámetros de la plantilla CD-HIT*](#-plantilla-cd-hit)
+
+#### 5.2. MAFFT (Alineamiento de secuencias)
+Una vez terminado CD-HIT, lanza el alineamiento sobre el archivo filtrado `dummy_cdhit.fasta`. Generará `dummy_cdhit_mafft.fasta`.
+
+
+```bash
+/data/cnm/vrg/VirResp-cluster/scripts/master_mafft.sh dummy_cdhit.fasta
+```
+
+> 🔗 [*Ver explicación detallada y parámetros de la plantilla MAFFT*](#-plantilla-mafft)
+
+#### 5.3. IQ-TREE (Reconstrucción Filogenética)
+Lanza IQ-TREE sobre el alineamiento `dummy_cdhit_mafft.fasta`. Generará el árbol filogenético y archivos asociados.
+
+
+```bash
+/data/cnm/vrg/VirResp-cluster/scripts/master_iqtree.sh dummy_cdhit_mafft.fasta
+```
+
+> 🔗 [*Ver explicación detallada y parámetros de la plantilla IQ-TREE*](#-plantilla-iq-tree)
+
+#### 5.4. BEAST (Análisis Bayesiano - Opcional)
+Si lo que deseas ejecutar es un análisis Bayesiano con BEAST a partir de un archivo `.xml` preparado previamente con BEAUti:
+
+
+```bash
+/data/cnm/vrg/VirResp-cluster/scripts/master_beast.sh mi_analisis.xml
+```
+
+> 🔗 [*Ver explicación detallada y uso de BEAST / BEAUti*](#-plantilla-beast-y-uso-de-beauti)
+
+---
+
+### 🟩 PASO 6: CONSULTAR EL ESTADO DE TUS TRABAJOS EN SLURM
+
+> 🟩 **ENTORNO: CLÚSTER (PORTUTATIS)**
+
+Mientras las tareas se ejecutan en segundo plano, puedes comprobar su progreso con estos sencillos comandos:
+
+
+```bash
+# Ver el estado de tus tareas en la cola de procesamiento
+squeue -u tu_usuario
+
+# Ver detalles o consumo de recursos de un trabajo específico (reemplaza ID_TRABAJO)
+scontrol show job ID_TRABAJO
+
+# Cancelar o detener una tarea si te has equivocado
+scancel ID_TRABAJO
+```
+
+
+#### ¿Cómo interpretar los estados en `squeue`?
+* **`R` (Running)**: La tarea se está ejecutando correctamente.
+* **`PD` (Pending)**: La tarea está en espera en la cola hasta que haya nodos/recursos libres.
+* **`CG` (Completing)**: La tarea está finalizando y guardando los resultados.
+
+---
+
+### 🔷 PASO 7: DESCARGAR LOS RESULTADOS A TU ORDENADOR
+
+> 🟦 **ENTORNO: TU ORDENADOR (LOCAL)**
+
+Una vez finalizados los análisis en el clúster, vuelve a la terminal de tu ordenador (LOCAL) para traer todos los resultados generados de vuelta a tu equipo.
+
+
+```bash
+# Sintaxis general:
+# rsync -avz -e "ssh -p 32122" usuario@portutatis.isciii.es:/data/cnm/vrg/usuario/ ./carpeta_destino_local/
+
+# Ejemplo para traer toda tu carpeta de trabajo al directorio actual en local:
+rsync -avz -e "ssh -p 32122" usuario@portutatis.isciii.es:/data/cnm/vrg/usuario/* ./resultados_cluster/
+```
+
+
+---
+
+## 🛠️ COMANDOS BÁSICOS DE LINUX (IMPRESCINDIBLES)
+
+| Comando | Función / Uso |
+| :--- | :--- |
+| `cd /ruta/` | Cambiar de directorio / carpeta. |
+| `cd ..` | Subir un nivel de carpeta hacia atrás. |
+| `ls` | Listar los archivos y carpetas de la ubicación actual. |
+| `ls -lh` | Listar archivos mostrando su tamaño en formato legible (MB, GB). |
+| `pwd` | Muestra la ruta completa del directorio donde estás situado. |
+| `mkdir nombre_carpeta` | Crear una carpeta nueva. |
+| `cp origen destino` | Copiar un archivo a otra ubicación. |
+| `mv origen destino` | Mover o cambiar de nombre un archivo o carpeta. |
+| `cat archivo.txt` | Muestra todo el contenido del archivo en la pantalla. |
+| `head -n 20 archivo.fasta` | Muestra solo las primeras 20 líneas del archivo. |
+
+---
+
+### ⚠️ AVISO IMPORTANTE SOBRE ELIMINACIÓN DE ARCHIVOS
+
+> 🛑 **¡ATENCIÓN! EN EL CLÚSTER NO EXISTE PAPELERA DE RECICLAJE**
+> 
+> * **`rm archivo`**: Elimina un archivo permanentemente.
+> * **`rm -r carpeta`**: Elimina una carpeta y todo su contenido de forma recursiva.
+> 
+> **NO ES POSIBLE RECUPERAR NINGÚN ARCHIVO O CARPETA UNA VEZ BORRADO.**
+> Revisa minuciosamente la ruta y el nombre del archivo antes de presionar `Enter` al usar `rm` o `rm -r`.
+
+---
+
+## 📄 EXPLICACIÓN DE PLANTILLAS Y HERRAMIENTAS
+
+A continuación se detalla el funcionamiento interno de cada comando para virólogos que requieran entender qué ejecuta la plantilla por debajo.
+
+---
+
+### 🧬 PLANTILLA CD-HIT
+
+Reduce la redundancia de secuencias mediante agrupamiento (clustering) por similitud de identidad.
+
+
+```bash
+# Comando interno ejecutado en el script lanzar_cdhit.sh:
+cd-hit -i entrada.fasta -o salida_cdhit.fasta -c 0.99 -n 5 -M 16000 -T 4
+```
+
+
+* **`-i`**: Archivo FASTA de entrada.
+* **`-o`**: Nombre del archivo FASTA de salida filtrado.
+* **`-c 0.99`**: Umbral de identidad de secuencia (99%). Secuencias con una similitud de nucleótidos $\ge 99\%$ se agrupan en una sola representación.
+* **`-n 5`**: Tamaño de palabra (word size). Recomendado 5 para el rango de identidad $0.90 - 1.00$.
+* **`-M 16000`**: Límite de memoria asignada en MB (16 GB).
+* **`-T 4`**: Número de hilos de procesamiento (threads) asignados.
+
+---
+
+### 🧬 PLANTILLA MAFFT
+
+Alineamiento múltiple de secuencias de nucleótidos o proteínas de gran precisión.
+
+
+```bash
+# Comando interno ejecutado en el script lanzar_mafft.sh:
+mafft --auto --thread 8 entrada_cdhit.fasta > salida_aligned.fasta
+```
+
+
+* **`--auto`**: Selecciona automáticamente la estrategia de alineamiento óptima (L-INS-i, FFT-NS-i, etc.) en función del número y la longitud de las secuencias.
+* **`--thread 8`**: Utiliza 8 hilos de procesamiento en el nodo asignado para acelerar el cálculo.
+* **`> salida_aligned.fasta`**: Redirige la salida del alineamiento hacia el archivo indicado.
+
+---
+
+### 🧬 PLANTILLA IQ-TREE
+
+Construcción de árboles filogenéticos por Máxima Verosimilitud (Maximum Likelihood) con selección automática del modelo de sustitución.
+
+
+```bash
+# Comando interno ejecutado en el script lanzar_iqtree.sh:
+iqtree -s salida_aligned.fasta -m MFP -bb 1000 -nt AUTO
+```
+
+
+* **`-s`**: Archivo de alineamiento de entrada (formato FASTA, PHYLIP o NEXUS).
+* **`-m MFP`**: *ModelFinder Plus*. Evalúa automáticamente todos los modelos de sustitución nucleotídica y elige el de mejor ajuste estadístico.
+* **`-bb 1000`**: Realiza 1000 réplicas de *Ultrafast Bootstrap* (UFBoot) para evaluar el soporte de ramas y nodos del árbol.
+* **`-nt AUTO`**: Determina automáticamente el número óptimo de hilos de CPU en el nodo.
+
+---
+
+### 🧬 PLANTILLA BEAST Y USO DE BEAUTI
+
+BEAST es una herramienta de inferencia filogenética Bayesiana orientada a estimar fechas de divergencia, tasas evolutivas y dinámicas poblacionales a lo largo del tiempo.
+
+
+```bash
+# Comando interno ejecutado en el script lanzar_beast.sh:
+beast -threads 8 mi_analisis.xml
+```
+
+
+#### Flujo de trabajo completo para análisis con BEAST
 
 
 ```text
-Usuario en Terminal
-      │
-      ▼
-Ejecuta: plantillas/lanzar_herramienta.sh archivo.fasta
-      │
-      ├─► 1. Analiza el archivo (cuenta secuencias, longitud)
-      ├─► 2. Muestra un menú de preguntas bioinformáticas
-      ├─► 3. Configura los parámetros y los recursos de Slurm
-      └─► 4. Envía el trabajo mediante 'sbatch' al Script Maestro
-                  │
-                  ▼
-          scripts/master_herramienta.sh (en nodo de cómputo)
-                  │
-                  ├─► Activa el entorno Conda ('miniresp')
-                  ├─► Copia los datos a /local_scratch
-                  ├─► Ejecuta el análisis bioinformático
-                  └─► Copia los resultados a la carpeta del usuario
+[BEAUti] ──> Genera .xml ──> [BEAST en Clúster] ──> Genera .log y .trees ──> [Tracer / TreeAnnotator / FigTree]
 ```
 
 
----
-
-## Flujo de Trabajo Interactivo en 3 Pasos
-
-No necesitas editar variables dentro del código ni modificar archivos de texto para enviar trabajos al clúster.
-
-### Paso 1: Navega a la carpeta donde están tus datos
+1. **Creación del XML (BEAUti)**: Abre BEAUti en tu ordenador local (o en el entorno configurado), carga tu alineamiento, define las fechas de muestreo, el modelo de sustitución, el reloj molecular y el modelo poblacional, y guarda el archivo resultante como `analisis.xml`.
+2. **Ejecución de la cadena (BEAST)**: Sube `analisis.xml` al clúster y lanza la plantilla de BEAST. El clúster procesará las cadenas MCMC y generará dos archivos clave de salida:
+   * `analisis.log`: Contiene la traza numérica de los parámetros muestreados.
+   * `analisis.trees`: Contiene la colección de árboles generados durante la simulación.
+3. **Evaluación de parámetros (Tracer)**: Una vez descargado el archivo `analisis.log` a tu ordenador, abre **Tracer** y carga dicho log. Comprueba que el parámetro **ESS (Effective Sample Size)** sea superior a 200 en los apartados principales para garantizar que la simulación ha convergido correctamente. Si dispones de Tracer configurado en tu entorno Linux local, simplemente ejecútalo desde tu terminal:
 
 ```bash
-cd /data/cnm/tu_usuario/mi_analisis/
+tracer analisis.log
 ```
 
-
-### Paso 2: Ejecuta el script interactivo correspondiente
-Pasa tu archivo de entrada como argumento al script interactivo:
+4. **Construcción del árbol consenso (TreeAnnotator)**: Pasa el archivo `analisis.trees` por **TreeAnnotator** para resumir la colección de árboles en un único árbol de Máxima Clado de Credibilidad (MCC). Puedes ejecutarlo por línea de comandos indicando el porcentaje de descartes (*burn-in*):
 
 ```bash
-~/Documentos/VirResp-cluster/plantillas/lanzar_mafft.sh mis_secuencias.fasta
+treeannotator -burnin 10 analisis.trees mi_arbol_mcc.tree
 ```
 
-
-### Paso 3: Responde a las preguntas en pantalla
-El script desplegará un menú interactivo. Selecciona las opciones deseadas respondiendo con números o letras (ej. '1', 'S', 'N') y confirma el envío al clúster.
+5. **Visualización (FigTree)**: Abre `mi_arbol_mcc.tree` en **FigTree** para visualizar el árbol final con sus respectivas fechas de divergencia y soportes de nodos.
 
 ---
-
-## Subir y Bajar Datos del Clúster
-
-### 1. Desde una interfaz gráfica (Recomendado para uso diario)
-Puedes utilizar programas como **WinSCP** (Windows) o **FileZilla** (Mac/Linux):
-* **Host:** IP o dominio del clúster.
-* **Puerto:** 22 (o el puerto SSH asignado).
-* **Protocolo:** SFTP.
-* Navega en el panel derecho hasta tu directorio personal `/data/cnm/tu_usuario/` para arrastrar y soltar archivos.
-
-### 2. Desde la línea de comandos (Terminal local)
-
-* **Subir un archivo al clúster:**
-
-```bash
-scp mis_secuencias.fasta usuario@cluster:/data/cnm/tu_usuario/mi_analisis/
-```
-
-
-* **Descargar los resultados a tu ordenador:**
-
-```bash
-scp -r usuario@cluster:/data/cnm/tu_usuario/mi_analisis/resultados/ ./
-```
-
-
-* **Sincronizar carpetas grandes (rsync):**
-
-```bash
-rsync -avz --progress usuario@cluster:/data/cnm/tu_usuario/mi_analisis/ ./
-```
-
-
----
-
-## 1. Antes de Empezar: Requisitos
-
-Antes de lanzar cualquier proceso en el clúster, asegúrate de cumplir con lo siguiente:
-1. Tener una cuenta activa de usuario en el clúster.
-2. Estar conectado a la red local del centro o a la VPN institucional.
-3. Tener permisos de escritura en la ruta del laboratorio: `/data/cnm/vrg/` o en tu espacio `/data/cnm/tu_usuario/`.
-4. Clonar este repositorio en tu directorio personal si no está presente:
-
-```bash
-git clone https://github.com/tu_repositorio/VirResp-cluster.git ~/Documentos/VirResp-cluster
-```
-
-
----
-
-## 2. Comandos Básicos de Linux
-
-| Comando | Descripción | Ejemplo de uso |
-| :--- | :--- | :--- |
-| `pwd` | Muestra la ruta completa del directorio actual | `pwd` |
-| `ls -lh` | Lista los archivos del directorio mostrando su tamaño | `ls -lh` |
-| `cd <ruta>` | Cambia al directorio especificado | `cd /data/cnm/tu_usuario/` |
-| `mkdir <nombre>` | Crea una carpeta nueva | `mkdir brote_influ_2026` |
-| `cp <origen> <destino>` | Copia un archivo o directorio | `cp datos.fasta ./carpeta/` |
-| `grep -c "^>" <archivo>` | Cuenta cuántas secuencias FASTA existen | `grep -c "^>" secuencias.fasta` |
-| `head -n 20 <archivo>` | Muestra las primeras 20 líneas de un archivo | `head -n 20 archivo.txt` |
-
----
-
-## 3. Cómo Funciona el Clúster y Slurm
-
-El clúster procesa los datos mediante un gestor de colas llamado **Slurm**. No se deben ejecutar análisis directamente en el nodo de acceso (login node) porque se bloquea el sistema para los demás usuarios.
-
-### Ubicación de los archivos de salida y logs
-Al ejecutar los scripts interactivos, los archivos de registro (`.out` y `.err`) se guardarán automáticamente **en el mismo directorio donde se encuentra tu archivo de entrada**:
-* `herramienta_<JOB_ID>.out`: Muestra el registro paso a paso y el estado del análisis.
-* `herramienta_<JOB_ID>.err`: Muestra alertas técnicas o mensajes de error si el proceso falla.
-
----
-
-## 4. Entorno Conda: ¿Qué necesito activar?
-
-**No necesitas instalar nada ni activar entornos de software manualmente.**
-
-Los scripts maestros activan de forma automática el entorno unificado de Conda (`miniresp`), configurado por Germán. Este entorno contiene las versiones exactas de MAFFT, CD-HIT, IQ-TREE, BEAST y sus dependencias.
-
-*Nota:* El archivo `environment.yml` presente en la raíz del repositorio se utiliza únicamente para tareas de mantenimiento o reconstrucción del entorno por parte del administrador.
-
----
-
-## 5. Guía de Herramientas Disponibles
-
-### MAFFT (Alineamiento de Secuencias)
-
-Alineamiento múltiple de secuencias genómicas o de genes individuales.
-
-* **Ejecución:**
-
-```bash
-~/Documentos/VirResp-cluster/plantillas/lanzar_mafft.sh mi_fichero.fasta
-```
-
-
-* **Opciones del menú:**
-  * **AUTO:** Opción por defecto recomendada para la mayoría de los análisis.
-  * **L-INS-i:** Máxima precisión para regiones hipervariables (< 500 secuencias).
-  * **FFT-NS-2:** Algoritmo rápido para conjuntos de datos grandes.
-  * **PartTree:** Algoritmo masivo cuando se trabaja con más de 10.000 genomas.
-* **Aspecto clave en virología:** Permite activar la opción `--adjustdirection`. Se recomienda marcar **S** si las muestras pueden contener secuencias alineadas en sentido reverso-complementario.
-* **Archivos generados:**
-  * `<nombre>_aligned.fasta`: Archivo FASTA alineado final.
-
----
-
-### CD-HIT (Haplotipado y Desduplicación)
-
-Identificación de secuencias idénticas o muy similares para reducir la redundancia en conjuntos de datos virológicos.
-
-* **Ejecución:**
-
-```bash
-~/Documentos/VirResp-cluster/plantillas/lanzar_cdhit.sh mi_fichero.fasta
-```
-
-
-* **Opciones del menú:**
-  * **100% Identidad (-c 1.0):** Haplotipado estricto. Obtiene únicamente secuencias 100% idénticas.
-  * **99% Identidad (-c 0.99):** Desduplicación permitiendo pequeños errores de secuenciación o PCR.
-  * **95% Identidad (-c 0.95):** Agrupamiento por linajes o genotipos cercanos.
-* **Archivos generados:**
-  Crea la carpeta `<nombre>_haplotypes/` con los siguientes archivos:
-  * `<nombre>_representatives.fasta`: Secuencias desduplicadas (un representante por grupo).
-  * `<nombre>_haplotypes.txt`: Reporte detallado en texto plano que lista qué secuencia representa a qué grupo.
-  * `<nombre>_raw.clstr`: Matriz de agrupación nativa de CD-HIT.
-
----
-
-### IQ-TREE (Filogenia por Máxima Verosimilitud)
-
-Construcción de árboles filogenéticos bajo el criterio de Máxima Verosimilitud.
-
-* **Ejecución:**
-
-```bash
-~/Documentos/VirResp-cluster/plantillas/lanzar_iqtree.sh mi_alineamiento.fasta
-```
-
-
-* **Opciones del menú:**
-  * **ModelFinder:** Evaluación automática del mejor modelo de sustitución nucleotídica.
-  * **UFBoot:** Cálculo del soporte de ramas mediante Ultra-Fast Bootstrap (1000 réplicas).
-* **Archivos generados:**
-  * `<nombre>.treefile`: Árbol filogenético final en formato Newick (compatible con FigTree, iTOL, Microreact o Auspice).
-  * `<nombre>.iqtree`: Reporte detallado del modelo de sustitución seleccionado y estadísticos del árbol.
-  * `<nombre>.log`: Log con el avance numérico de la optimización del árbol.
-
----
-
-### BEAST (Relojes Moleculares y Filodinámica)
-
-Análisis filogenético bayesiano para la estimación de fechas de divergencia y tasas de evolución.
-
-* **Flujo previo fuera del clúster:**
-  1. Abre la aplicación de escritorio **BEAUti** en tu ordenador personal.
-  2. Carga tu alineamiento FASTA o NEXUS y configura las fechas de muestreo, el modelo de sustitución, el reloj molecular y el modelo poblacional.
-  3. Exporta el archivo de configuración `.xml`.
-  4. Sube **únicamente el archivo .xml** al clúster (no subas el archivo FASTA fuente a la carpeta de BEAST).
-
-* **Ejecución en el clúster:**
-
-```bash
-~/Documentos/VirResp-cluster/plantillas/lanzar_beast.sh mi_analisis.xml
-```
-
-
-* **Archivos generados:**
-  * `<nombre>.log`: Tabla de parámetros muestreados durante la cadena MCMC. Se analiza en tu ordenador con la herramienta **Tracer**.
-  * `<nombre>.trees`: Conjunto de árboles muestreados durante la ejecución de la cadena MCMC.
-
----
-
-## 6. Resolución de Errores Típicos
-
-### ❌ CANCELLED DUE TO TIME LIMIT
-* **Causa:** El tiempo de ejecución superó el máximo asignado a la cola de Slurm.
-* **Solución:** Los scripts ajustan los tiempos automáticamente según el volumen de datos. Si tu trabajo vence por tiempo, selecciona algoritmos más rápidos en el menú interactivo (ejemplo: usar `FFT-NS-2` en lugar de `L-INS-i` en MAFFT) o contacta con Germán para solicitar una extensión a la partición de larga duración (`long_idx`).
-
-### ❌ Out Of Memory / OOM Killed
-* **Causa:** El proceso ha superado la memoria RAM reservada.
-* **Solución:** Los scripts ajustan los límites de memoria dinámicamente según la herramienta (ejemplo: CD-HIT detecta conjuntos de datos de > 50.000 secuencias y MAFFT a partir de 10.000). Si ocurre este fallo, desduplica primero el conjunto de muestras usando CD-HIT al 100% de identidad antes de procesarlo en MAFFT o IQ-TREE.
-
-### ❌ Caracteres invisibles de Windows (`\r`)
-* **Causa:** El archivo de datos se creó o editó en un sistema Windows y conserva saltos de línea incompatibles con Linux.
-* **Solución:** Los scripts interactivos corrigen el archivo automáticamente antes de procesarlo. Si deseas solucionarlo manualmente:
-
-```bash
-sed -i 's/\r$//' mi_fichero.fasta
-```
-
-
-### ❌ Permission denied
-* **Causa:** Los scripts interactivos de la carpeta `plantillas/` no disponen de permisos de ejecución en Linux.
-* **Solución:** Asigna permisos de ejecución mediante el comando:
-
-```bash
-chmod +x ~/Documentos/VirResp-cluster/plantillas/*.sh
-```
-
-
----
-
-*Repositorio mantenido por Germán. Ante cualquier duda, incidencia o solicitud de nuevas herramientas, contacta directamente con el administrador.*
