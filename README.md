@@ -1,5 +1,4 @@
-```markdown
-<!-- INICIO DE DOCUMENTO README.md -->
+
 
 # Manual del Clúster HPC - Grupo de Virus Respiratorios (VirResp)
 
@@ -44,7 +43,7 @@ Bienvenido al repositorio central de herramientas bioinformáticas del grupo Vir
 
 El proyecto `VirResp-cluster` está organizado en dos niveles para evitar modificaciones accidental del código de cómputo:
 
-<!-- INICIO BLOQUE TEXT: ESTRUCTURA ARCHIVOS -->
+
 ```text
 VirResp-cluster/
 ├── environment.yml       <-- Uso exclusivo del administrador (Germán)
@@ -60,11 +59,11 @@ VirResp-cluster/
     ├── master_iqtree.sh
     └── master_beast.sh
 ```
-<!-- FIN BLOQUE TEXT: ESTRUCTURA ARCHIVOS -->
+
 
 ### Arquitectura de Ejecución
 
-<!-- INICIO BLOQUE TEXT: DIAGRAMA ARQUITECTURA -->
+
 ```text
 Usuario en Terminal
       │
@@ -84,7 +83,7 @@ Ejecuta: plantillas/lanzar_herramienta.sh archivo.fasta
                   ├─► Ejecuta el análisis bioinformático
                   └─► Copia los resultados a la carpeta del usuario
 ```
-<!-- FIN BLOQUE TEXT: DIAGRAMA ARQUITECTURA -->
+
 
 ---
 
@@ -93,19 +92,19 @@ Ejecuta: plantillas/lanzar_herramienta.sh archivo.fasta
 No necesitas editar variables dentro del código ni modificar archivos de texto para enviar trabajos al clúster.
 
 ### Paso 1: Navega a la carpeta donde están tus datos
-<!-- INICIO BLOQUE BASH: PASO 1 -->
+
 ```bash
 cd /data/cnm/tu_usuario/mi_analisis/
 ```
-<!-- FIN BLOQUE BASH: PASO 1 -->
+
 
 ### Paso 2: Ejecuta el script interactivo correspondiente
 Pasa tu archivo de entrada como argumento al script interactivo:
-<!-- INICIO BLOQUE BASH: PASO 2 -->
+
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_mafft.sh mis_secuencias.fasta
 ```
-<!-- FIN BLOQUE BASH: PASO 2 -->
+
 
 ### Paso 3: Responde a las preguntas en pantalla
 El script desplegará un menú interactivo. Selecciona las opciones deseadas respondiendo con números o letras (ej. '1', 'S', 'N') y confirma el envío al clúster.
@@ -124,25 +123,25 @@ Puedes utilizar programas como **WinSCP** (Windows) o **FileZilla** (Mac/Linux):
 ### 2. Desde la línea de comandos (Terminal local)
 
 * **Subir un archivo al clúster:**
-<!-- INICIO BLOQUE BASH: SUBIR SCP -->
+
 ```bash
 scp mis_secuencias.fasta usuario@cluster:/data/cnm/tu_usuario/mi_analisis/
 ```
-<!-- FIN BLOQUE BASH: SUBIR SCP -->
+
 
 * **Descargar los resultados a tu ordenador:**
-<!-- INICIO BLOQUE BASH: BAJAR SCP -->
+
 ```bash
 scp -r usuario@cluster:/data/cnm/tu_usuario/mi_analisis/resultados/ ./
 ```
-<!-- FIN BLOQUE BASH: BAJAR SCP -->
+
 
 * **Sincronizar carpetas grandes (rsync):**
-<!-- INICIO BLOQUE BASH: RSYNC -->
+
 ```bash
 rsync -avz --progress usuario@cluster:/data/cnm/tu_usuario/mi_analisis/ ./
 ```
-<!-- FIN BLOQUE BASH: RSYNC -->
+
 
 ---
 
@@ -153,11 +152,11 @@ Antes de lanzar cualquier proceso en el clúster, asegúrate de cumplir con lo s
 2. Estar conectado a la red local del centro o a la VPN institucional.
 3. Tener permisos de escritura en la ruta del laboratorio: `/data/cnm/vrg/` o en tu espacio `/data/cnm/tu_usuario/`.
 4. Clonar este repositorio en tu directorio personal si no está presente:
-<!-- INICIO BLOQUE BASH: GIT CLONE -->
+
 ```bash
 git clone https://github.com/tu_repositorio/VirResp-cluster.git ~/Documentos/VirResp-cluster
 ```
-<!-- FIN BLOQUE BASH: GIT CLONE -->
+
 
 ---
 
@@ -203,11 +202,11 @@ Los scripts maestros activan de forma automática el entorno unificado de Conda 
 Alineamiento múltiple de secuencias genómicas o de genes individuales.
 
 * **Ejecución:**
-<!-- INICIO BLOQUE BASH: EJECUCION MAFFT -->
+
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_mafft.sh mi_fichero.fasta
 ```
-<!-- FIN BLOQUE BASH: EJECUCION MAFFT -->
+
 
 * **Opciones del menú:**
   * **AUTO:** Opción por defecto recomendada para la mayoría de los análisis.
@@ -225,11 +224,11 @@ Alineamiento múltiple de secuencias genómicas o de genes individuales.
 Identificación de secuencias idénticas o muy similares para reducir la redundancia en conjuntos de datos virológicos.
 
 * **Ejecución:**
-<!-- INICIO BLOQUE BASH: EJECUCION CDHIT -->
+
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_cdhit.sh mi_fichero.fasta
 ```
-<!-- FIN BLOQUE BASH: EJECUCION CDHIT -->
+
 
 * **Opciones del menú:**
   * **100% Identidad (-c 1.0):** Haplotipado estricto. Obtiene únicamente secuencias 100% idénticas.
@@ -248,11 +247,11 @@ Identificación de secuencias idénticas o muy similares para reducir la redunda
 Construcción de árboles filogenéticos bajo el criterio de Máxima Verosimilitud.
 
 * **Ejecución:**
-<!-- INICIO BLOQUE BASH: EJECUCION IQTREE -->
+
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_iqtree.sh mi_alineamiento.fasta
 ```
-<!-- FIN BLOQUE BASH: EJECUCION IQTREE -->
+
 
 * **Opciones del menú:**
   * **ModelFinder:** Evaluación automática del mejor modelo de sustitución nucleotídica.
@@ -275,11 +274,11 @@ Análisis filogenético bayesiano para la estimación de fechas de divergencia y
   4. Sube **únicamente el archivo .xml** al clúster (no subas el archivo FASTA fuente a la carpeta de BEAST).
 
 * **Ejecución en el clúster:**
-<!-- INICIO BLOQUE BASH: EJECUCION BEAST -->
+
 ```bash
 ~/Documentos/VirResp-cluster/plantillas/lanzar_beast.sh mi_analisis.xml
 ```
-<!-- FIN BLOQUE BASH: EJECUCION BEAST -->
+
 
 * **Archivos generados:**
   * `<nombre>.log`: Tabla de parámetros muestreados durante la cadena MCMC. Se analiza en tu ordenador con la herramienta **Tracer**.
@@ -300,24 +299,21 @@ Análisis filogenético bayesiano para la estimación de fechas de divergencia y
 ### ❌ Caracteres invisibles de Windows (`\r`)
 * **Causa:** El archivo de datos se creó o editó en un sistema Windows y conserva saltos de línea incompatibles con Linux.
 * **Solución:** Los scripts interactivos corrigen el archivo automáticamente antes de procesarlo. Si deseas solucionarlo manualmente:
-<!-- INICIO BLOQUE BASH: FIX WINDOWS -->
+
 ```bash
 sed -i 's/\r$//' mi_fichero.fasta
 ```
-<!-- FIN BLOQUE BASH: FIX WINDOWS -->
+
 
 ### ❌ Permission denied
 * **Causa:** Los scripts interactivos de la carpeta `plantillas/` no disponen de permisos de ejecución en Linux.
 * **Solución:** Asigna permisos de ejecución mediante el comando:
-<!-- INICIO BLOQUE BASH: FIX CHMOD -->
+
 ```bash
 chmod +x ~/Documentos/VirResp-cluster/plantillas/*.sh
 ```
-<!-- FIN BLOQUE BASH: FIX CHMOD -->
+
 
 ---
 
 *Repositorio mantenido por Germán. Ante cualquier duda, incidencia o solicitud de nuevas herramientas, contacta directamente con el administrador.*
-
-<!-- FIN DE DOCUMENTO README.md -->
-```
