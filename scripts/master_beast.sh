@@ -18,7 +18,7 @@ mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
 # Copiar el archivo de configuración XML al espacio de trabajo SSD
-cp "${SLURM_SUBMIT_DIR}/${INPUT_XML}" input.xml
+cp "$INPUT_XML" input.xml
 
 echo "Nodo de cómputo asignado: $(hostname)"
 echo "Hilos de CPU asignados: ${SLURM_CPUS_PER_TASK}"
@@ -29,7 +29,7 @@ echo "beast -threads ${SLURM_CPUS_PER_TASK} ${BEAST_EXTRA} input.xml"
 beast -threads "${SLURM_CPUS_PER_TASK}" ${BEAST_EXTRA} input.xml
 
 # Crear carpeta ordenada de resultados finales en el directorio original del usuario
-DEST_DIR="${SLURM_SUBMIT_DIR}/${BASENAME}_beast_results"
+DEST_DIR="$(dirname "$INPUT_XML")/${BASENAME}_beast_results"
 mkdir -p "$DEST_DIR"
 
 # Mover los archivos generados por la MCMC (.log, .trees, .ops, etc.)
