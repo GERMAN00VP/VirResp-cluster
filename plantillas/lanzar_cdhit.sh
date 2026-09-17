@@ -55,12 +55,30 @@ ALN_LENGTH=$(awk '/^>/{next} {gsub(/[ \t\r\n]/, ""); total+=length($0)} END{if (
 echo " ANALIZANDO ARCHIVO FASTA:"
 echo " -> Ruta absoluta: $INPUT_FASTA"
 echo " -> Muestras/Secuencias: $NUM_SEQS"
-echo " -> Longitud media estimada: $ALN_LENGTH bp"
+echo " -> Longitud media estimada: $ALN_LENGTH posiciones"
 echo "=========================================================="
 
 # ------------------------------------------------------------------------------
-# 3. CONTROLES INTERACTIVOS (SELECCIÓN DE SIMILITUD Y PARÁMETROS)
+# 3. CONTROLES INTERACTIVOS (SELECCIÓN DE TIPO DE SECUENCIA Y PARÁMETROS)
 # ------------------------------------------------------------------------------
+
+# PREGUNTA NRO 1: TIPO DE SECUENCIA (NT vs AA)
+echo ""
+echo "Selecciona el tipo de secuencia:"
+echo "  1) Nucleótidos / ADN / ARN [Genomas, genes] (Usa: cd-hit-est)"
+echo "  2) Aminoácidos / Proteínas                  (Usa: cd-hit)"
+read -p "Opción [1-2] (por defecto 1): " SEQ_TYPE_OPT
+SEQ_TYPE_OPT=${SEQ_TYPE_OPT:-1}
+
+if [ "$SEQ_TYPE_OPT" -eq 2 ]; then
+    CDHIT_CMD="cd-hit"
+    SEQ_TYPE_LABEL="Proteínas (Aminoácidos)"
+else
+    CDHIT_CMD="cd-hit-est"
+    SEQ_TYPE_LABEL="Nucleótidos (ADN/ARN)"
+fi
+
+# PREGUNTA NRO 2: UMBRAL DE SIMILITUD
 echo ""
 echo "Selecciona el Umbral de Similitud:"
 echo "  1) 100% Identidad (-c 1.0)  - Desduplicación pura (Haplotipado estricto)"
@@ -87,16 +105,30 @@ case $SIM_OPT in
     *) ID_THRESHOLD="1.0" ;;
 esac
 
-# Asignación del tamaño del word (-n) requerida técnicamente por CD-HIT
+# Asignación del tamaño del word (-n) requerida técnicamente según la herramienta elegida
 WORD_SIZE=10
-if awk "BEGIN{exit !($ID_THRESHOLD < 0.88)}"; then
-    WORD_SIZE=5
-elif awk "BEGIN{exit !($ID_THRESHOLD < 0.90)}"; then
-    WORD_SIZE=6
-elif awk "BEGIN{exit !($ID_THRESHOLD < 0.92)}"; then
-    WORD_SIZE=8
+if [ "$CDHIT_CMD" = "cd-hit" ]; then
+    # Limites para Aminoácidos (cd-hit): máx n=5
+    if awk "BEGIN{exit !($ID_THRESHOLD >= 0.7)}"; then
+        WORD_SIZE=5
+    elif awk "BEGIN{exit !($ID_THRESHOLD >= 0.6)}"; then
+        WORD_SIZE=4
+    elif awk "BEGIN{exit !($ID_THRESHOLD >= 0.5)}"; then
+        WORD_SIZE=3
+    else
+        WORD_SIZE=2
+    fi
 else
-    WORD_SIZE=10
+    # Limites para Nucleótidos (cd-hit-est): máx n=10
+    if awk "BEGIN{exit !($ID_THRESHOLD < 0.88)}"; then
+        WORD_SIZE=5
+    elif awk "BEGIN{exit !($ID_THRESHOLD < 0.90)}"; then
+        WORD_SIZE=6
+    elif awk "BEGIN{exit !($ID_THRESHOLD < 0.92)}"; then
+        WORD_SIZE=8
+    else
+        WORD_SIZE=10
+    fi
 fi
 
 echo ""
@@ -126,6 +158,7 @@ echo ""
 echo "=========================================================="
 echo " RESUMEN DEL TRABAJO A ENVIAR"
 echo "=========================================================="
+echo " -> Tipo de Secuencia: $SEQ_TYPE_LABEL ($CDHIT_CMD)"
 echo " -> Objetivo:          $( [ "$ID_THRESHOLD" = "1.0" ] && echo "Haplotipado / Desduplicación estricta" || echo "Agrupamiento al $ID_THRESHOLD" )"
 echo " -> Flags CD-HIT:      $CDHIT_EXTRA"
 echo " -> Directorio:        $WORKDIR"
@@ -147,7 +180,7 @@ sbatch \
   --cpus-per-task="$CPUS" \
   --mem="$MEM" \
   --job-name="CDHIT_${NUM_SEQS}" \
-  --export=ALL,INPUT_FASTA="$INPUT_FASTA",CDHIT_EXTRA="$CDHIT_EXTRA" \
+  --export=ALL,INPUT_FASTA="$INPUT_FASTA",CDHIT_EXTRA="$CDHIT_EXTRA",CDHIT_CMD="$CDHIT_CMD" \
   "$MASTER_SCRIPT"
 
 echo ""

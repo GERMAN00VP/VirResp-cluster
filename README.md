@@ -200,17 +200,19 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 ### 1. Lanzador de CD-HIT (`lanzar_cdhit.sh`)
 
 * **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_cdhit.sh <archivo.fasta>`
-* **Valida e inspecciona:** Comprueba la existencia del archivo, valida que contenga cabeceras FASTA (`>`), cuenta el número total de secuencias y calcula la longitud media en pares de bases (bp).
+* **Valida e inspecciona:** Comprueba la existencia del archivo, valida que contenga cabeceras FASTA (`>`), cuenta el número total de secuencias y calcula la longitud media en posiciones.
 
 #### Opciones interactivas que te solicitará:
-1. **Umbral de Similitud (`-c`):**
+1. **Tipo de Secuencia (NT vs AA):**
+   * `1) Nucleótidos / ADN / ARN [Genomas, genes]`: Ejecuta el algoritmo **`cd-hit-est`**. *(El tamaño de palabra `-n` se asigna automáticamente entre 5 y 10 según el umbral).*
+   * `2) Aminoácidos / Proteínas`: Ejecuta el algoritmo **`cd-hit`**. *(El tamaño de palabra `-n` se asigna automáticamente entre 2 y 5 según el umbral).*
+2. **Umbral de Similitud (`-c`):**
    * `1) 100% Identidad (-c 1.0)`: Desduplicación pura (haplotipado estricto).
    * `2) 99% Identidad (-c 0.99)`: Colapsa secuencias con pequeños errores de lectura o microvariación.
    * `3) 95% Identidad (-c 0.95)`: Agrupa por linajes o subvariantes genómicas.
    * `4) Personalizado`: Permite introducir un umbral manual entre 0.80 y 1.0.
-   *(Nota: El tamaño de palabra `-n` se asigna automáticamente según el umbral: `-n 5` para <0.88, `-n 6` para <0.90, `-n 8` para <0.92 y `-n 10` para ≥0.92).*
-2. **Cobertura mínima de la secuencia más corta (`-aS`):** Por defecto `1.0` (100%).
-3. **Resumen y confirmación:** Te muestra los recursos Slurm que asignará y pide confirmación (`s/n`) para enviar.
+3. **Cobertura mínima de la secuencia más corta (`-aS`):** Por defecto `1.0` (100%).
+4. **Resumen y confirmación:** Muestra el ejecutable seleccionado (`cd-hit` o `cd-hit-est`), los parámetros técnicos y los recursos Slurm que asignará antes de pedir confirmación (`s/n`).
 
 #### Gestión de Recursos en Slurm:
 * **Datasets estándar (≤ 50.000 secuencias):** Partición `short_idx`, tiempo máx: 4 horas, 8 CPUs, 32 GB RAM.

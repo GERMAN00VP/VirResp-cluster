@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-# 1. VERIFICACIÓN DEL ENTORNO CONDA
+# 1. VERIFICACIÓN DEL ENTORNO CONDA Y VARIABLES
 ENV_PATH="/data/cnm/vrg/conda_envs/miniresp"
 
 if [ ! -d "$ENV_PATH" ]; then
@@ -14,6 +14,9 @@ fi
 
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate "$ENV_PATH"
+
+# Definir el ejecutable (cd-hit o cd-hit-est), por defecto cd-hit-est
+CDHIT_CMD="${CDHIT_CMD:-cd-hit-est}"
 
 # Parseo de nombres de archivo y carpeta final
 BASENAME=$(basename "$INPUT_FASTA")
@@ -36,7 +39,6 @@ cd "$WORK_DIR"
 cp "$INPUT_FASTA" input.fasta
 
 # 3. CÁLCULO ROBUSTO DE MEMORIA Y HILOS
-# Cálculo compatible con SLURM_MEM_PER_NODE y SLURM_MEM_PER_CPU
 RAW_MEM="${SLURM_MEM_PER_NODE:-0}"
 if [ "$RAW_MEM" -eq 0 ]; then
     RAW_MEM=$(( ${SLURM_MEM_PER_CPU:-0} * ${SLURM_CPUS_PER_TASK:-1} ))
@@ -56,15 +58,16 @@ echo "=========================================================="
 echo " EJECUCIÓN EN NODO DE CÓMPUTO"
 echo "=========================================================="
 echo " -> Nodo asignado: $(hostname)"
+echo " -> Herramienta seleccionada: $CDHIT_CMD"
 echo " -> Hilos asignados a CD-HIT: $THREADS (de ${SLURM_CPUS_PER_TASK} allocados)"
 echo " -> Límite de Memoria RAM: ${MEM_MB} MB"
 echo " -> Comando exacto:"
-echo "    cd-hit -i input.fasta -o output_cdhit -T ${THREADS} -M ${MEM_MB} ${CDHIT_EXTRA}"
+echo "    ${CDHIT_CMD} -i input.fasta -o output_cdhit -T ${THREADS} -M ${MEM_MB} ${CDHIT_EXTRA}"
 echo "=========================================================="
 
 # 4. EJECUCIÓN Y VALIDACIÓN DE ERRORES
-if ! cd-hit -i input.fasta -o output_cdhit -T "$THREADS" -M "$MEM_MB" ${CDHIT_EXTRA}; then
-    echo " ERROR CRÍTICO: El proceso de CD-HIT ha fallado." >&2
+if ! "$CDHIT_CMD" -i input.fasta -o output_cdhit -T "$THREADS" -M "$MEM_MB" ${CDHIT_EXTRA}; then
+    echo " ERROR CRÍTICO: El proceso de $CDHIT_CMD ha fallado." >&2
     echo " Revisa el log de error cdhit_${SLURM_JOB_ID}.err" >&2
     exit 1
 fi
