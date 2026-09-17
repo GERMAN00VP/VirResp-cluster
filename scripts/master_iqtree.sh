@@ -37,11 +37,11 @@ echo "=========================================================="
 echo " -> Nodo asignado: $(hostname)"
 echo " -> Hilos asignados: ${SLURM_CPUS_PER_TASK}"
 echo " -> Comando exacto:"
-echo "    iqtree2 -s input.fasta -nt AUTO -ntmax ${SLURM_CPUS_PER_TASK} ${IQTREE_EXTRA} -prefix result_tree"
+echo "    iqtree2 -s input.fasta -nt AUTO -ntmax ${SLURM_CPUS_PER_TASK} ${IQTREE_EXTRA} --prefix result_tree"
 echo "=========================================================="
 
 # 3. EJECUCIÓN Y CONTROL RIGUROSO DE ERRORES
-if ! iqtree2 -s input.fasta -nt AUTO -ntmax "${SLURM_CPUS_PER_TASK}" ${IQTREE_EXTRA} -prefix result_tree; then
+if ! iqtree2 -s input.fasta -nt AUTO -ntmax "${SLURM_CPUS_PER_TASK}" ${IQTREE_EXTRA} --prefix result_tree; then
     echo " ERROR CRÍTICO: IQ-TREE 2 ha fallado durante la reconstrucción filogenética." >&2
     echo "   Revisa el log de Slurm iqtree_${SLURM_JOB_ID}.err para conocer la causa." >&2
     
