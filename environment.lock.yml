@@ -1,0 +1,54 @@
+name: miniresp
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - _openmp_mutex=4.5
+  - beagle-lib=4.0.1
+  - beast2=2.7.7
+  - cd-hit=4.8.1
+  - fasttree=2.2.0
+  - font-ttf-ubuntu=0.83
+  - fontconfig=2.18.3
+  - freetype=2.14.3
+  - gawk=5.4.1
+  - gmp=6.3.0
+  - iqtree=2.4.0
+  - libasprintf=0.25.1
+  - libexpat=2.8.1
+  - libfreetype=2.14.3
+  - libfreetype6=2.14.3
+  - libgcc=16.2.0
+  - libgcc-ng=16.2.0
+  - libgettextpo=0.25.1
+  - libgfortran=16.2.0
+  - libgfortran-ng=16.2.0
+  - libgfortran5=16.2.0
+  - libgomp=16.2.0
+  - libiconv=1.18
+  - libpng=1.6.58
+  - libstdcxx=16.2.0
+  - libstdcxx-ng=16.2.0
+  - libuuid=2.42.3
+  - libxcb=1.17.0
+  - libzlib=1.3.2
+  - mafft=7.526
+  - modeltest-ng=0.1.7
+  - mpfr=4.2.2
+  - mpi=1.0
+  - ncurses=6.6
+  - openmpi=4.1.6
+  - pthread-stubs=0.4
+  - raxml-ng=1.2.2
+  - readline=8.3
+  - seqkit=2.14.0
+  - xorg-libx11=1.8.13
+  - xorg-libxau=1.0.12
+  - xorg-libxdmcp=1.1.5
+  - xorg-libxext=1.3.7
+  - xorg-libxfixes=6.0.2
+  - xorg-libxi=1.8.3
+  - xorg-libxtst=1.2.5
+  - zlib=1.3.2
+prefix: /home/ucm-user/miniconda3/envs/miniresp

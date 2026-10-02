@@ -1,18 +1,38 @@
+# ==============================================================================
+# Entorno conda del grupo VirResp  (SOLO para el administrador)
+#
+# Crear (primera vez):
+#   conda config --set channel_priority strict
+#   conda env create -p /data/cnm/vrg/conda_envs/miniresp -f environment.yml
+#
+# Actualizar:
+#   conda env update -p /data/cnm/vrg/conda_envs/miniresp -f environment.yml --prune
+#
+# Congelar las versiones exactas tras crearlo (reproducibilidad de los análisis):
+#   conda env export -p /data/cnm/vrg/conda_envs/miniresp --no-builds > environment.lock.yml
+#   (subir environment.lock.yml al repositorio cada vez que cambie algo)
+#
+# Comprobar que FastTree trae la versión con varios núcleos:
+#   ls /data/cnm/vrg/conda_envs/miniresp/bin | grep -i fasttree
+#   (debe aparecer FastTreeMP; los scripts lo usan automáticamente)
+# ==============================================================================
 name: miniresp
 channels:
   - conda-forge
   - bioconda
-  - defaults
+  - nodefaults        # evita el canal 'defaults' de Anaconda (licencia y conflictos)
 dependencies:
-  # Alineamiento y procesado
-  - mafft=7.*
-  - fasttree=2.*
+  # Preparación y alineamiento de secuencias
   - seqkit
   - cd-hit
-  # Filogenia y modelos
-  - iqtree=2.*
+  - mafft=7.*
+
+  # Filogenia de máxima verosimilitud
+  - fasttree>=2.1.11,<3   # árboles rápidos (incluye FastTreeMP, multinúcleo)
+  - iqtree=2.*            # árboles rigurosos con selección de modelo
   - raxml-ng
   - modeltest-ng
-  # Filogenia Bayesiana
+
+  # Filogenia bayesiana / filodinámica
   - beast2
   - beagle-lib
