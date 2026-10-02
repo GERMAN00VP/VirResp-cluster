@@ -1,10 +1,7 @@
 #!/bin/bash
 # ==============================================================================
-# LANZADOR INTERACTIVO DE FASTTREE  (VirResp-cluster)
-# Uso:  ./lanzar_fasttree.sh alineamiento.fasta
-#
-# Qué hace: revisa tu alineamiento, te hace 3 preguntas sencillas, calcula
-# solo los recursos que hacen falta y envía el trabajo al clúster.
+# LANZADOR INTERACTIVO DE FASTTREE (VirResp-cluster)
+# Uso: ./lanzar_fasttree.sh alineamiento.fasta
 # ==============================================================================
 
 set -euo pipefail
@@ -23,8 +20,6 @@ error() {
     exit 1
 }
 
-# Pregunta con opciones numéricas. Resultado en la variable CHOICE.
-#   $1 = texto, $2 = opción por defecto, $3 = número máximo de opciones
 ask_choice() {
     local ans
     while true; do
@@ -38,8 +33,6 @@ ask_choice() {
     done
 }
 
-# Pregunta sí/no. Devuelve 0 si la respuesta es sí.
-#   $1 = texto, $2 = respuesta por defecto (s o n)
 ask_yn() {
     local ans def="$2" hint
     if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
@@ -55,26 +48,23 @@ ask_yn() {
 }
 
 # ------------------------------------------------------------------------------
-# Mensaje inicial
+# Encabezado
 # ------------------------------------------------------------------------------
 linea
-echo " ÁRBOL FILOGENÉTICO RÁPIDO CON FASTTREE"
+echo " ÁRBOL FILOGENÉTICO DE MÁXIMA VEROSIMILITUD CON FASTTREE"
 linea
-echo " Necesitas un archivo FASTA ya ALINEADO (por ejemplo, con MAFFT)."
-echo " Consejo: ejecuta este script desde la carpeta donde está tu archivo."
-echo " Los resultados aparecerán en una carpeta llamada *_fasttree_results/"
+echo " Fichero de entrada: Alineamiento FASTA (*.fasta, *.aln, *.fa)"
 linea
-echo ""
 
 # ------------------------------------------------------------------------------
 # 1. COMPROBACIONES PREVIAS
 # ------------------------------------------------------------------------------
 if [ "$#" -ne 1 ]; then
-    error "Tienes que indicar el archivo alineado." "Uso: $0 <alineamiento.fasta>"
+    error "Indica el alineamiento de entrada." "Uso: $0 <alineamiento.fasta>"
 fi
 
 if [ ! -f "$1" ]; then
-    error "El archivo '$1' no existe." "Comprueba el nombre con:  ls -l"
+    error "El archivo '$1' no existe."
 fi
 
 if [ ! -s "$1" ]; then
@@ -82,36 +72,30 @@ if [ ! -s "$1" ]; then
 fi
 
 case "$1" in
-    *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo primero con:  gunzip $1" ;;
+    *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo con: gunzip $1" ;;
 esac
 
 if ! command -v sbatch >/dev/null 2>&1; then
-    error "No encuentro el gestor de trabajos del clúster (sbatch)." \
-          "Este script solo funciona conectado al clúster."
+    error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
 fi
 
 INPUT_FASTA="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_FASTA")"
 
 if [ ! -w "$WORKDIR" ]; then
-    error "No tienes permiso para escribir en la carpeta:" "$WORKDIR" \
-          "Copia el archivo a tu carpeta de usuario y vuelve a probar."
+    error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-# El script maestro vive junto a este lanzador (../scripts/), esté donde esté el repo
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_fasttree.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
-    error "Hay un problema con la instalación del repositorio (no es ejecutable):" \
-          "$MASTER_SCRIPT" "Avisa al administrador (Germán)."
+    error "No existe o no es ejecutable el script maestro:" "$MASTER_SCRIPT"
 fi
 
 # ------------------------------------------------------------------------------
-# 2. ANÁLISIS DEL ALINEAMIENTO (no modifica tu archivo)
+# 2. INSPECCIÓN DEL ALINEAMIENTO
 # ------------------------------------------------------------------------------
-# Una sola lectura: nº de secuencias, longitud mínima y máxima, y qué tipo de
-# letras contiene (para adivinar si son nucleótidos o proteínas).
 read -r NUM_SEQS MIN_LEN MAX_LEN TOTAL_CHARS NUC_CHARS GAP_CHARS < <(
     tr -d '\r' < "$INPUT_FASTA" | awk '
         BEGIN { n = 0; seen = 0; min = 0; max = 0 }
@@ -139,42 +123,35 @@ read -r NUM_SEQS MIN_LEN MAX_LEN TOTAL_CHARS NUC_CHARS GAP_CHARS < <(
 )
 
 if [ "$NUM_SEQS" -eq 0 ]; then
-    error "El archivo no parece un FASTA: no encuentro ninguna secuencia (líneas que empiezan por '>')."
+    error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
 fi
 
 if [ "$NUM_SEQS" -lt 4 ]; then
-    error "Hay solo $NUM_SEQS secuencias." "Para construir un árbol se necesitan al menos 4."
+    error "Se detectaron $NUM_SEQS secuencias." "Se requieren al menos 4 secuencias para construir un árbol."
 fi
 
 ALN_LEN="$MAX_LEN"
 
-echo " ANALIZANDO TU ALINEAMIENTO"
+echo " INSPECCIÓN DEL ALINEAMIENTO"
 echo " -> Archivo:      $INPUT_FASTA"
 echo " -> Secuencias:   $NUM_SEQS"
-echo " -> Longitud:     $ALN_LEN posiciones"
+echo " -> Longitud:     $ALN_LEN pb/aa"
 
-# Todas las secuencias deben medir lo mismo si están alineadas
 if [ "$MIN_LEN" -ne "$MAX_LEN" ]; then
-    error "Tus secuencias NO miden todas lo mismo (de $MIN_LEN a $MAX_LEN posiciones)." \
-          "Eso significa que el archivo NO está alineado." \
-          "Primero alinéalo con:  lanzar_mafft.sh  y usa el archivo alineado que genera."
+    error "Longitudes desiguales detectadas ($MIN_LEN a $MAX_LEN posiciones)." \
+          "El archivo no está alineado. Ejecuta primero 'lanzar_mafft.sh'."
 fi
 
-# Nombres repetidos
 DUPS=$(tr -d '\r' < "$INPUT_FASTA" | grep '^>' | sed 's/^>//; s/[[:space:]].*$//' | sort | uniq -d | head -n 5 || true)
 if [ -n "$DUPS" ]; then
-    error "Hay secuencias con el MISMO nombre. Cada secuencia necesita un nombre único." \
-          "Algunos ejemplos repetidos: $(echo "$DUPS" | tr '\n' ' ')"
+    error "Identificadores de secuencia duplicados detectados:" "$(echo "$DUPS" | tr '\n' ' ')"
 fi
 
-# Caracteres que dan problemas en los árboles
 BAD_IDS=$(tr -d '\r' < "$INPUT_FASTA" | grep -c -E '^>[^[:space:]]*[][(),:;]' || true)
 if [ "$BAD_IDS" -gt 0 ]; then
     echo ""
-    echo " [AVISO] $BAD_IDS nombres contienen alguno de estos símbolos:  ( ) , : ; [ ]"
-    echo "         Pueden estropear el archivo del árbol. Te recomiendo cambiarlos"
-    echo "         (por ejemplo por guiones bajos) y volver a empezar."
-    if ! ask_yn "         ¿Quieres continuar de todos modos?" "n"; then
+    echo " [AVISO] $BAD_IDS nombres contienen caracteres no recomendados en Newick:  ( ) , : ; [ ]"
+    if ! ask_yn "         ¿Deseas continuar de todos modos?" "n"; then
         echo "Operación cancelada."
         exit 0
     fi
@@ -182,136 +159,198 @@ fi
 linea
 
 # ------------------------------------------------------------------------------
-# 3. PREGUNTA 1: TIPO DE SECUENCIA
+# 3. SELECCIÓN DE PARÁMETROS FILOGENÉTICOS
 # ------------------------------------------------------------------------------
 RESIDUES=$(( TOTAL_CHARS - GAP_CHARS ))
 if [ "$RESIDUES" -le 0 ]; then
-    error "El alineamiento solo contiene huecos (-). No hay nada que analizar."
+    error "El alineamiento solo contiene huecos o caracteres ambiguos (-)."
 fi
 NT_PCT=$(( 100 * NUC_CHARS / RESIDUES ))
 
 if [ "$NT_PCT" -ge 90 ]; then
     DETECTED=1
-    DETECTED_TXT="nucleótidos (ADN/ARN)"
+    DETECTED_TXT="Nucleótidos (ADN/ARN)"
 else
     DETECTED=2
-    DETECTED_TXT="aminoácidos (proteínas)"
+    DETECTED_TXT="Aminoácidos (Proteínas)"
 fi
 
 echo ""
-echo "1. ¿Qué tipo de secuencias son?"
-echo "   Por su contenido, parecen ser: $DETECTED_TXT"
-echo "  1) Nucleótidos (ADN / ARN): genomas o genes de virus"
-echo "  2) Aminoácidos (proteínas)"
-ask_choice "Opción" "$DETECTED" 2
+echo "1. TIPO DE SECUENCIA"
+echo "   Autodetección basada en composición: $DETECTED_TXT"
+echo "  1) Nucleótidos (ADN / ARN)"
+echo "  2) Aminoácidos (Proteínas)"
+ask_choice "Selección" "$DETECTED" 2
 SEQ_OPT="$CHOICE"
-
-if [ "$SEQ_OPT" -ne "$DETECTED" ]; then
-    echo ""
-    echo " [AVISO] Tu archivo parece contener $DETECTED_TXT, pero has elegido otra cosa."
-    if ! ask_yn "         ¿Seguro que quieres continuar con tu elección?" "n"; then
-        echo "Operación cancelada."
-        exit 0
-    fi
-fi
 
 if [ "$SEQ_OPT" -eq 1 ]; then
     SEQ_TYPE="NT"
     SEQ_TYPE_TXT="Nucleótidos (ADN/ARN)"
-    MODEL_TXT="GTR (el modelo estándar para virus de ADN/ARN; se aplica solo)"
+    
+    echo ""
+    echo "2. MODELO DE SUSTITUCIÓN NUCLEOTÍDICA"
+    echo "  1) GTR+CAT (General Time Reversible) [Recomendado para genomas/genes virales]"
+    echo "  2) JC+CAT (Jukes-Cantor)"
+    ask_choice "Selección" "1" 2
+    NT_MODEL_OPT="$CHOICE"
+    if [ "$NT_MODEL_OPT" -eq 1 ]; then
+        MODEL_FLAG="-gtr"
+        MODEL_TXT="GTR (General Time Reversible)"
+    else
+        MODEL_FLAG="" # JC es el valor por defecto de FastTree si no se pasa -gtr
+        MODEL_TXT="JC (Jukes-Cantor)"
+    fi
 else
     SEQ_TYPE="AA"
-    SEQ_TYPE_TXT="Aminoácidos (proteínas)"
-    MODEL_TXT="LG (el modelo estándar para proteínas; se aplica solo)"
+    SEQ_TYPE_TXT="Aminoácidos (Proteínas)"
+    
+    echo ""
+    echo "2. MODELO DE SUSTITUCIÓN EN AMINOÁCIDOS"
+    echo "  1) LG (Le y Gascuel) [Recomendado para la mayoría de proteínas virales]"
+    echo "  2) WAG (Whelan y Goldman)"
+    echo "  3) JTT (Jones-Taylor-Thornton)"
+    ask_choice "Selección" "1" 3
+    AA_MODEL_OPT="$CHOICE"
+    case "$AA_MODEL_OPT" in
+        1) MODEL_FLAG="-lg";  MODEL_TXT="LG (Le-Gascuel)" ;;
+        2) MODEL_FLAG="-wag"; MODEL_TXT="WAG (Whelan-Goldman)" ;;
+        3) MODEL_FLAG="";     MODEL_TXT="JTT (Jones-Taylor-Thornton)" ;;
+    esac
 fi
 
-# ------------------------------------------------------------------------------
-# 4. PREGUNTA 2: CUIDADO EN LA BÚSQUEDA DEL ÁRBOL
-# ------------------------------------------------------------------------------
 echo ""
-echo "2. ¿Qué tipo de búsqueda quieres?"
-MODE_OPT=1
-if [ "$NUM_SEQS" -le 20000 ]; then
-    echo "  1) Estándar (recomendado): rápido y fiable para casi todos los casos."
-    echo "  2) Cuidadoso: el programa dedica más tiempo a buscar el mejor árbol posible"
-    echo "     (tarda varias veces más). Útil para el árbol definitivo de un artículo."
-    ask_choice "Opción" "1" 2
-    MODE_OPT="$CHOICE"
+echo "3. NÚMERO DE CATEGORÍAS DE TASA DE EVOLUCIÓN (-cat)"
+echo "   FastTree aproxima la variación de tasa entre sitios con el modelo CAT."
+echo "  1) 20 categorías [Estándar por defecto en FastTree]"
+echo "  2) 12 categorías [Ahorro de memoria/tiempo en datasets masivos]"
+echo "  3) 8 categorías"
+echo "  4) Personalizado"
+ask_choice "Selección" "1" 4
+CAT_OPT="$CHOICE"
+
+case "$CAT_OPT" in
+    1) CAT_NUM=20 ;;
+    2) CAT_NUM=12 ;;
+    3) CAT_NUM=8 ;;
+    4)
+        while true; do
+            read -r -p "   Introduce el número de categorías CAT (4-50) [Intro = 20]: " CUSTOM_CAT
+            CUSTOM_CAT="${CUSTOM_CAT:-20}"
+            if [[ "$CUSTOM_CAT" =~ ^[0-9]+$ ]] && [ "$CUSTOM_CAT" -ge 4 ] && [ "$CUSTOM_CAT" -le 50 ]; then
+                CAT_NUM="$CUSTOM_CAT"
+                break
+            fi
+            echo "   Valor no válido. Debe ser un entero entre 4 y 50."
+        done
+        ;;
+esac
+CAT_FLAG="-cat $CAT_NUM"
+
+echo ""
+echo "4. OPTIMIZACIÓN LIKELIHOOD BAJO MODELO GAMMA (-gamma)"
+echo "   Reoptimiza la verosimilitud (lnL) y las longitudes de rama bajo una distribución Gamma."
+echo "  1) Sí (-gamma) [Recomendado para estimación precisa de longitudes de rama]"
+echo "  2) No (mantener únicamente la aproximación CAT)"
+ask_choice "Selección" "1" 2
+GAMMA_OPT="$CHOICE"
+
+if [ "$GAMMA_OPT" -eq 1 ]; then
+    GAMMA_FLAG="-gamma"
+    GAMMA_TXT="Activado (-gamma)"
 else
-    echo "   Con tantas secuencias ($NUM_SEQS) se usa automáticamente la búsqueda estándar."
+    GAMMA_FLAG=""
+    GAMMA_TXT="Desactivado (solo CAT)"
 fi
 
-# ------------------------------------------------------------------------------
-# 5. PREGUNTA 3: FIABILIDAD DE LAS RAMAS
-# ------------------------------------------------------------------------------
 echo ""
-echo "3. ¿Cómo quieres medir la fiabilidad de cada rama del árbol?"
-echo "   (Son los números que aparecen sobre las ramas, de 0 a 1.)"
+echo "5. ALGORITMO Y EXHAUSTIVIDAD DE BÚSQUEDA TOPOLÓGICA"
+echo "  1) Búsqueda Estándar: NNI y SPR rápidos (equilibrio óptimo velocidad/precisión)"
+echo "  2) Búsqueda Exhaustiva (-spr 4 -mlacc 2 -slownni): mayor profundidad en intercambios"
+echo "     SPR y NNI con optimización ML más rigurosa (aumenta el tiempo x2 - x4)"
+ask_choice "Selección" "1" 2
+SEARCH_OPT="$CHOICE"
+
+if [ "$SEARCH_OPT" -eq 2 ]; then
+    SEARCH_FLAGS="-spr 4 -mlacc 2 -slownni"
+    SEARCH_TXT="Exhaustiva (-spr 4 -mlacc 2 -slownni)"
+else
+    SEARCH_FLAGS=""
+    SEARCH_TXT="Estándar (NNI/SPR por defecto)"
+fi
+
+echo ""
+echo "6. SOPORTE DE RAMAS Y MÉTODOS DE EVALUACIÓN"
 if [ "$NUM_SEQS" -le 5000 ]; then
-    echo "  1) Rápida (recomendado): valores 'SH-like', se calculan sin coste extra."
-    echo "     No equivalen a un bootstrap, así que no los llames 'bootstrap' en un artículo."
-    echo "  2) Bootstrap (100 repeticiones): el método clásico que piden muchas revistas."
-    echo "     Tarda bastante más."
-    echo "  3) Sin valores de fiabilidad: lo más rápido."
-    ask_choice "Opción" "1" 3
+    echo "  1) SH-like Local Supports (Shimodaira-Hasegawa) [Rápido, calculado por defecto]"
+    echo "  2) Bootstrap Clásico (1000 repeticiones con -boot 1000) [Requiere mucho más tiempo]"
+    echo "  3) Sin soporte de ramas (-nosupport)"
+    ask_choice "Selección" "1" 3
     SUPPORT_OPT="$CHOICE"
 else
-    echo "  1) Rápida (recomendado): valores 'SH-like', se calculan sin coste extra."
-    echo "     No equivalen a un bootstrap, así que no los llames 'bootstrap' en un artículo."
-    echo "  2) Sin valores de fiabilidad: lo más rápido."
-    echo "   (El bootstrap no está disponible con más de 5.000 secuencias.)"
-    ask_choice "Opción" "1" 2
+    echo "  1) SH-like Local Supports (Shimodaira-Hasegawa) [Rápido, por defecto]"
+    echo "  2) Sin soporte de ramas (-nosupport)"
+    echo "   (Nota: Bootstrap con 1000 repeticiones desactivado para > 5.000 secuencias por coste de cómputo)"
+    ask_choice "Selección" "1" 2
     if [ "$CHOICE" -eq 2 ]; then SUPPORT_OPT=3; else SUPPORT_OPT=1; fi
 fi
 
 case "$SUPPORT_OPT" in
-    1) SUPPORT_TXT="Rápida (SH-like)" ;;
-    2) SUPPORT_TXT="Bootstrap (100 repeticiones)" ;;
-    3) SUPPORT_TXT="Sin valores de fiabilidad" ;;
+    1) SUPPORT_FLAG="";          SUPPORT_TXT="SH-like Local Supports (Shimodaira-Hasegawa)" ;;
+    2) SUPPORT_FLAG="-boot 1000"; SUPPORT_TXT="Bootstrap Clásico (1000 repeticiones)" ;;
+    3) SUPPORT_FLAG="-nosupport"; SUPPORT_TXT="Sin soporte de ramas (-nosupport)" ;;
 esac
-if [ "$MODE_OPT" -eq 2 ]; then MODE_TXT="Cuidadoso"; else MODE_TXT="Estándar"; fi
 
 # ------------------------------------------------------------------------------
-# 6. CONFIGURACIÓN TÉCNICA (automática; el usuario no tiene que decidir nada)
+# 4. CONSTRUCCIÓN DE COMANDOS Y ESTIMACIÓN DE RECURSOS
 # ------------------------------------------------------------------------------
 FLAGS=()
+
 if [ "$SEQ_TYPE" = "NT" ]; then
-    FLAGS+=(-nt -gtr)
-else
-    FLAGS+=(-lg)
+    FLAGS+=(-nt)
 fi
-FLAGS+=(-gamma -seed 1253)
+
+if [ -n "$MODEL_FLAG" ]; then
+    FLAGS+=("$MODEL_FLAG")
+fi
+
+FLAGS+=($CAT_FLAG)
+
+if [ -n "$GAMMA_FLAG" ]; then
+    FLAGS+=("$GAMMA_FLAG")
+fi
+
+if [ -n "$SEARCH_FLAGS" ]; then
+    FLAGS+=($SEARCH_FLAGS)
+fi
+
+if [ -n "$SUPPORT_FLAG" ]; then
+    FLAGS+=($SUPPORT_FLAG)
+fi
+
+FLAGS+=(-seed 1253)
 
 HUGE_NOTE=""
 if [ "$NUM_SEQS" -gt 50000 ]; then
     FLAGS+=(-fastest)
-    HUGE_NOTE="Conjunto muy grande (>50.000 secuencias): se activa un modo de ahorro de memoria y tiempo."
+    HUGE_NOTE="Aviso: Dataset masivo (>50.000 secuencias). Se añade automáticamente '-fastest' para optimización de memoria."
 fi
-if [ "$MODE_OPT" -eq 2 ]; then
-    FLAGS+=(-spr 4 -mlacc 2 -slownni)
-fi
-case "$SUPPORT_OPT" in
-    2) FLAGS+=(-boot 100) ;;
-    3) FLAGS+=(-nosupport) ;;
-esac
+
 FASTTREE_EXTRA="${FLAGS[*]}"
 
-# Estimación de recursos según secuencias x longitud (no solo nº de secuencias)
+# Factor de esfuerzo para Slurm
 WORK=$(( NUM_SEQS * ALN_LEN ))
 EFF_WORK="$WORK"
-if [ "$MODE_OPT" -eq 2 ];    then EFF_WORK=$(( EFF_WORK * 3 )); fi
-if [ "$SUPPORT_OPT" -eq 2 ]; then EFF_WORK=$(( EFF_WORK * 4 )); fi
+if [ "$SEARCH_OPT" -eq 2 ];  then EFF_WORK=$(( EFF_WORK * 3 )); fi
+if [ "$SUPPORT_OPT" -eq 2 ]; then EFF_WORK=$(( EFF_WORK * 10 )); fi
 
-if [ "$NUM_SEQS" -gt 50000 ] || [ "$EFF_WORK" -gt 1500000000 ]; then
+if [ "$NUM_SEQS" -gt 50000 ] || [ "$EFF_WORK" -gt 3000000000 ]; then
     PARTITION="long_idx";   TIME="5-00:00:00"; CPUS=16
-elif [ "$NUM_SEQS" -gt 5000 ] || [ "$EFF_WORK" -gt 100000000 ]; then
+elif [ "$NUM_SEQS" -gt 5000 ] || [ "$EFF_WORK" -gt 200000000 ]; then
     PARTITION="middle_idx"; TIME="48:00:00";   CPUS=8
 else
     PARTITION="short_idx";  TIME="12:00:00";   CPUS=4
 fi
 
-# Memoria orientativa: 2 nodos por secuencia, 16 bytes/posición (NT) o 80 (AA),
-# x1,5 de margen + 5 GB base. Se redondea a múltiplos de 8 GB (mín. 16, máx. 300).
 if [ "$SEQ_TYPE" = "NT" ]; then BYTES_POS=16; else BYTES_POS=80; fi
 EST_BYTES=$(( 3 * NUM_SEQS * ALN_LEN * BYTES_POS ))
 EST_GB=$(( EST_BYTES / 1000000000 + 5 ))
@@ -320,41 +359,43 @@ if [ "$EST_GB" -lt 16 ];  then EST_GB=16;  fi
 if [ "$EST_GB" -gt 300 ]; then EST_GB=300; fi
 MEM="${EST_GB}G"
 
-# Nombre base (igual que en el script maestro) para anunciar la carpeta de resultados
 BASENAME="$(basename "$INPUT_FASTA")"
-BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fas}"
-BASENAME="${BASENAME%.fa}";    BASENAME="${BASENAME%.fna}"
+BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.aln}"
+BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.fa}"
+BASENAME="${BASENAME%.fna}"
 
 # ------------------------------------------------------------------------------
-# 7. RESUMEN Y CONFIRMACIÓN
+# 5. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
 echo ""
 linea
-echo " RESUMEN"
+echo " RESUMEN DE LA CONFIGURACIÓN SELECCIONADA"
 linea
-echo " Secuencias:           $SEQ_TYPE_TXT"
-echo " Modelo evolutivo:     $MODEL_TXT"
-echo " Tipo de búsqueda:     $MODE_TXT"
-echo " Fiabilidad de ramas:  $SUPPORT_TXT"
-echo " Carpeta de salida:    $WORKDIR/${BASENAME}_fasttree_results/"
+echo " Secuencias:            $SEQ_TYPE_TXT ($NUM_SEQS secuencias, $ALN_LEN posiciones)"
+echo " Modelo de sustitución:  $MODEL_TXT"
+echo " Categorías de tasa:    $CAT_NUM categorías (-cat $CAT_NUM)"
+echo " Optimización Gamma:    $GAMMA_TXT"
+echo " Búsqueda topológica:   $SEARCH_TXT"
+echo " Soporte de ramas:      $SUPPORT_TXT"
+echo " Comand line flags:     FastTree $FASTTREE_EXTRA"
+echo " Directorio salida:     $WORKDIR/${BASENAME}_fasttree_results/"
 echo ""
-echo " Se reservará en el clúster:"
-echo "   - $CPUS núcleos de cálculo y $MEM de memoria"
-echo "   - hasta $TIME de tiempo (cola '$PARTITION')"
-echo "   (Es una estimación a partir del tamaño de tu alineamiento.)"
+echo " Reserva en Slurm:"
+echo "   - Cómputo:  $CPUS CPUs (OpenMP FastTreeMP) | Memoria: $MEM"
+echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 if [ -n "$HUGE_NOTE" ]; then
     echo ""
     echo " $HUGE_NOTE"
 fi
 linea
 
-if ! ask_yn "¿Enviar el trabajo al clúster?" "s"; then
-    echo "Operación cancelada. No se ha enviado nada."
+if ! ask_yn "¿Confirmar y enviar trabajo a Slurm?" "s"; then
+    echo "Operación cancelada por el usuario."
     exit 0
 fi
 
 # ------------------------------------------------------------------------------
-# 8. ENVÍO AL CLÚSTER
+# 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
 JOB_ID=$(sbatch --parsable \
     --chdir="$WORKDIR" \
@@ -369,11 +410,9 @@ JOB_ID=$(sbatch --parsable \
 JOB_ID="${JOB_ID%%;*}"
 
 echo ""
-echo " Trabajo enviado correctamente. Número de trabajo: $JOB_ID"
+echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
-echo " Qué hacer ahora:"
-echo "   - Ver si ya está en marcha o terminado:   squeue -u \$USER"
-echo "     (si no aparece, ha terminado: mira la carpeta de resultados)"
-echo "   - Seguir lo que va haciendo:              tail -f $WORKDIR/fasttree_${JOB_ID}.err"
-echo "     (ese archivo .err muestra mensajes de progreso normales; no significa que haya fallos)"
-echo "   - Resultados al terminar:                 $WORKDIR/${BASENAME}_fasttree_results/"
+echo " Seguimiento y gestión:"
+echo "   - Estado de la cola:            squeue -u \$USER"
+echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/fasttree_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $WORKDIR/${BASENAME}_fasttree_results/"

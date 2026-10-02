@@ -55,19 +55,16 @@ VirResp-cluster/
 
 ---
 
-## Mini-glosario: qué es cada cosa
+## Mini-glosario del Clúster
 
-| Palabra | Qué significa, en cristiano |
+| Término | Definición / Contexto |
 | --- | --- |
-| **Clúster** | Un conjunto de ordenadores potentes compartidos. Tú les mandas el trabajo y lo hacen ellos. |
-| **Slurm / cola** | El "organizador de turnos" del clúster. Tu trabajo espera su turno y se ejecuta cuando hay hueco. |
-| **FASTA** | El formato de archivo de secuencias (cada secuencia empieza por una línea con `>` y su nombre). |
-| **Alineamiento** | Tus secuencias colocadas unas sobre otras para que se puedan comparar posición a posición. Es obligatorio antes de hacer un árbol. |
-| **Desduplicar** | Quitar secuencias idénticas (dejando una representante) para no repetir trabajo. |
-| **Árbol filogenético** | El dibujo de parentesco entre tus secuencias. Se guarda en un archivo `.treefile`. |
-| **Soporte de ramas** | Un número de 0 a 1 en cada rama que indica lo fiable que es esa agrupación. |
-| **Bootstrap** | Un método clásico para calcular ese soporte repitiendo el análisis muchas veces. |
-| **Modelo evolutivo** | Cómo se supone que cambian las secuencias con el tiempo. Los lanzadores eligen uno adecuado por ti. |
+| **Clúster** | Conjunto de nodos de cómputo de alto rendimiento conectados en red. |
+| **Slurm / Cola** | Gestor de recursos y trabajos que asigna tiempo de CPU, memoria y prioridad de ejecución. |
+| **SH-like Local Support** | Prueba de Shimodaira-Hasegawa aproximada por verosimilitud local en cada nodo interior. Mide la estabilidad de la rama (de 0 a 1) sin requerir re-muestreo. |
+| **Bootstrap (1000 rps)** | Evaluación de soporte mediante remuestreo de posiciones del alineamiento con 1000 pseudorréplicas. |
+| **Modelo CAT (-cat)** | Aproximación rápida a la heterogeneidad de tasas entre sitios mediante $N$ categorías discretas de velocidad de sustitución. |
+| **Reoptimización Gamma (-gamma)** | Recálculo de las longitudes de rama y verosimilitud (lnL) bajo una distribución Gamma tras resolver la topología con CAT. |
 
 ---
 
@@ -276,71 +273,45 @@ Los scripts de la carpeta `plantillas/` no hacen el cálculo directamente en el 
 - **Estrategia PartTree o datasets > 10.000 secuencias:** Partición `long_idx`, 5 días, 32 CPUs, 300 GB RAM.
 
 ---
-
 ### 3. Lanzador de FastTree (`lanzar_fasttree.sh`)
 
 - **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_fasttree.sh <alineamiento.fasta>`
-- **Necesitas:** un FASTA **ya alineado** (salida de MAFFT).
+- **Requisito:** Alineamiento en formato FASTA (*.fasta, *.aln, *.fa).
 
-#### Qué comprueba antes de preguntarte nada
+#### Comprobaciones de integridad del alineamiento
+Antes de configurar el análisis, el script verifica automáticamente:
+1. Longitud uniforme de las secuencias (garantiza que el alineamiento no está corrupto).
+2. Ausencia de identificadores duplicados.
+3. Caracteres incompatibles con formato Newick `( ) , : ; [ ]` en los nombres de las muestras.
+4. Discriminación automática de tipo de datos (nucleótidos vs. aminoácidos) basada en la proporción de residuos.
 
-El script revisa tu archivo y **te avisa en lenguaje claro** si hay un problema, sin llegar a gastar tiempo de cálculo:
+#### Opciones configurables en el menú
+El script permite ajustar los parámetros habituales de reconstrucción filogenética de manera explícita:
 
-- Que sea realmente un FASTA y tenga al menos 4 secuencias.
-- Que **todas las secuencias midan lo mismo** (si no, no están alineadas: te manda a MAFFT).
-- Que **no haya nombres repetidos**.
-- Que los nombres no tengan símbolos que estropean el árbol: `( ) , : ; [ ]`.
-- Si son nucleótidos o proteínas (lo detecta él solo y te lo propone).
+1. **Tipo de Secuencia:** `Nucleótidos` (`-nt`) o `Aminoácidos`.
+2. **Modelo de Sustitución:**
+   - **Nucleótidos:** `GTR+CAT` (`-gtr`) [Recomendado] o `JC+CAT` (Jukes-Cantor).
+   - **Proteínas:** `LG` (`-lg`), `WAG` (`-wag`) o `JTT` (Jones-Taylor-Thornton).
+3. **Categorías de Tasa de Evolución (`-cat N`):**
+   - Permite seleccionar 20 (estándar), 12, 8 o fijar un valor manual (4–50).
+4. **Optimización bajo Distribución Gamma (`-gamma`):**
+   - `Activado (-gamma)`: Reoptimiza las longitudes de rama y calcula la verosimilitud logarítmica ($\ln L$) final bajo el modelo Gamma.
+   - `Desactivado`: Mantiene las tasas estimadas directamente por la aproximación CAT.
+5. **Profundidad de Búsqueda Topológica:**
+   - **Estándar:** Intercambios NNI y SPR rápidos optimizados para alineamientos masivos.
+   - **Exhaustiva (`-spr 4 -mlacc 2 -slownni`):** Aumenta el radio de búsqueda SPR, realiza más iteraciones NNI y aplica mayor precisión en la optimización por máxima verosimilitud.
+6. **Soporte de Ramas:**
+   - **SH-like Local Supports:** Evaluación rápida Shimodaira-Hasegawa en escala 0–1 (sin coste de tiempo adicional).
+   - **Bootstrap Clásico (1000 repeticiones, `-boot 1000`):** Realiza 1000 pseudorréplicas de bootstrap (disponible para conjuntos $\le 5.000$ secuencias).
+   - **Sin soporte (`-nosupport`).**
 
-Tu archivo original **no se modifica**.
+#### Reproducibilidad y Archivos Generados
+Cada análisis fija la semilla aleatoria (`-seed 1253`) para garantizar la exactitud entre ejecuciones idénticas.
 
-#### Las 3 preguntas que te hará
-
-1. **¿Qué tipo de secuencias son?** El script te propone la opción correcta; normalmente solo tienes que pulsar Intro.
-2. **¿Qué tipo de búsqueda quieres?**
-  - `1) Estándar` (recomendado): rápido y fiable para casi todos los casos.
-  - `2) Cuidadoso`: dedica más tiempo a buscar el mejor árbol posible (varias veces más lento). Para el árbol definitivo.
-3. **¿Cómo medir la fiabilidad de las ramas?**
-  - `1) Rápida (SH-like)` (recomendado): se calcula sin coste extra. **No es un bootstrap**, no la llames así en un artículo.
-  - `2) Bootstrap (100 repeticiones)`: el método clásico; más lento. Solo disponible hasta 5.000 secuencias.
-  - `3) Sin valores`: lo más rápido.
-
-Después muestra un resumen y pide confirmación (`s/n`) antes de enviar nada.
-
-#### Lo que decide solo (no tienes que preocuparte)
-
-- **Modelo evolutivo:** GTR para nucleótidos, LG para proteínas. Son los estándar para este tipo de datos.
-- **Longitudes de rama refinadas** (opción `-gamma`) siempre activadas.
-- **Semilla fija** (1253): si repites el análisis con el mismo archivo y opciones, sale el mismo árbol.
-- **Más de 50.000 secuencias:** activa un modo de ahorro de memoria y tiempo.
-
-#### Qué recursos reserva
-
-Se calculan según **nº de secuencias × longitud del alineamiento** y según lo que elijas (cuidadoso y bootstrap necesitan más):
-
-| Tamaño del trabajo | Cola | Tiempo máx. | Núcleos |
-| --- | --- | --- | --- |
-| Pequeño (hasta ~5.000 secuencias y poco volumen total) | `short_idx` | 12 horas | 4 |
-| Mediano | `middle_idx` | 48 horas | 8 |
-| Grande (> 50.000 secuencias o muchísimo volumen) | `long_idx` | 5 días | 16 |
-
-La memoria se estima de forma orientativa (mínimo 16 GB, máximo 300 GB). Si un trabajo se queda sin memoria o sin tiempo, consulta [Qué hacer si algo falla](#qué-hacer-si-algo-falla).
-
-#### Qué obtienes
-
-Una carpeta `<tu_archivo>_fasttree_results/` con tres archivos, todos con la fecha y hora del análisis en el nombre (**así nunca se sobrescriben unos análisis con otros**):
-
-- `*.treefile`: el árbol (sin raíz). Los números sobre las ramas van de 0 a 1 (0,95 = 95 %).
-- `*_parametros.txt`: todo lo necesario para reproducir y describir el análisis (parámetros, versión del programa, nº de secuencias, huella del archivo de entrada, cita).
-- `*.log`: registro detallado del programa.
-
-#### Cómo leer el soporte de ramas (orientativo)
-
-Los valores SH-like cercanos a 1 indican agrupaciones muy fiables; los valores bajos indican que esa rama es dudosa. Como orientación, muchos grupos consideran fiables las ramas por encima de ~0,9, pero no son equivalentes a un bootstrap: si necesitas valores publicables, usa la opción de bootstrap o IQ-TREE.
-
-#### Cómo citar
-
-Price MN, Dehal PS, Arkin AP (2010) *FastTree 2 – Approximately Maximum-Likelihood Trees for Large Alignments.* PLoS ONE 5(3): e9490.
+Los resultados se almacenan en la carpeta `<basenombre>_fasttree_results/`:
+- `*.treefile`: Árbol filogenético en formato Newick.
+- `*_parametros.txt`: Registro exhaustivo con los flags exactos empleados, versión del ejecutable, hash MD5 del archivo de entrada y cita bibliográfica.
+- `*.log`: Salida estándar detallada del proceso de optimización ML.
 
 ---
 
