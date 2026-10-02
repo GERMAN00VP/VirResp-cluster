@@ -271,20 +271,14 @@ Los scripts de la carpeta `plantillas/` no realizan el cómputo directamente en 
 ### 4. Lanzador de BEAST + BEAGLE (`lanzar_beast.sh`)
 
 * **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_beast.sh <analisis.xml>`
-* **Valida e inspecciona:** Comprueba que el XML existe, elimina saltos de línea incompatibles de Windows (`\r`) y extrae automáticamente la longitud de la cadena MCMC (`chainLength`) mediante expresiones regulares.
+* **Valida e inspecciona automáticamente:** Comprueba que el XML existe, elimina saltos de línea incompatibles de Windows (`\r`), extrae la longitud de la cadena MCMC (`chainLength`) y calcula el número de taxones/secuencias.
 
-#### Opciones interactivas que te solicitará:
-1. **Motor de Aceleración Computacional:**
-   * `1) CPU Multinúcleo + BEAGLE` (`-beagle -beagle_CPU -beagle_SSE`) [Recomendado].
-   * `2) GPU + BEAGLE` (`-beagle -beagle_GPU`). Solicita aceleración por tarjeta gráfica en Slurm (`--gres=gpu:1`).
-   * `3) BEAST Nativo`: Sin aceleración BEAGLE.
-2. **Precisión Numérica de Cálculo:**
-   * `1) Doble Precisión (-beagle_double)`: Estabilidad en filodinámica y relojes complejos.
-   * `2) Precisión Simple (-beagle_single)`: Más rápido.
-   *(Nota: Si seleccionas GPU, el script fuerza automáticamente `-beagle_single` para garantizar compatibilidad).*
-3. **Estimación de tiempo de ejecución (para modo CPU):**
-   * `1) MCMC Corto/Medio`: Hasta 48 horas en partición `middle_idx` (16 CPUs, 64 GB RAM).
-   * `2) MCMC Largo/Muy pesado`: Hasta 5 días en partición `long_idx` (32 CPUs, 128 GB RAM).
+#### Configuración y asignación automática de recursos:
+Este script **es 100% automático** y no requiere seleccionar opciones manuales. Aplica la configuración más estable para evitar errores de desbordamiento numérico:
+* **Motor de cálculo:** CPU Multinócleo + BEAGLE SSE con Doble Precisión (`-beagle -beagle_CPU -beagle_SSE -beagle_double`).
+* **Asignación inteligente en Slurm:**
+  * **Análisis Estándar (`chainLength` ≤ 50M y ≤ 300 taxones):** Partición `middle_idx`, tiempo máx: 48 horas, 16 CPUs, 64 GB RAM.
+  * **Datasets Masivos o MCMC Larga (`chainLength` > 50M o > 300 taxones):** Escalado automático a partición `long_idx`, tiempo máx: 5 días, 32 CPUs, 128 GB RAM.
 
 ---
 
