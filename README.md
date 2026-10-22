@@ -1,3 +1,9 @@
+---
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
 # Manual del Clúster HPC - Grupo de Virus Respiratorios (VirResp)
 
 Bienvenido al repositorio central de herramientas bioinformáticas del grupo VirResp. Este sistema está diseñado para que puedas ejecutar análisis de desduplicación, alineamiento y filogenia **sin necesidad de programar** ni configurar manualmente el gestor de colas del clúster.
@@ -32,7 +38,7 @@ VirResp-cluster/
 
 ## Índice de Navegación Rápida
 
-- [Mini-glosario: qué es cada cosa](#mini-glosario-qué-es-cada-cosa)
+- [Mini-glosario del Clúster y Herramientas](#mini-glosario-del-clúster-y-herramientas)
 - [Guía Rápida de Trabajo (Paso a Paso)](#guía-rápida-de-trabajo-paso-a-paso)
   * [Paso 1: Localizar archivos en tu ordenador](#paso-1-localizar-archivos-en-tu-ordenador)
   * [Paso 2: Subir secuencias con rsync](#paso-2-subir-secuencias-con-rsync)
@@ -239,7 +245,7 @@ Los scripts de la carpeta `plantillas/` no hacen el cálculo directamente en el 
 
 ---
 
-### 1.Lanzador de CD-HIT (`lanzar_cdhit.sh`)
+### 1. Lanzador de CD-HIT (`lanzar_cdhit.sh`)
 
 - **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_cdhit.sh <secuencias.fasta>`
 - **Requisito:** Archivo FASTA de nucleótidos o proteínas (no requiere alineamiento previo).
@@ -312,6 +318,7 @@ Los resultados se depositan en el mismo directorio del FASTA original:
 - `<basenombre>_mafft_info.txt`: Registro de reproducibilidad con la versión exacta de MAFFT, parámetros de la línea de comandos, recuento de secuencias y hash MD5 del archivo original.
 
 ---
+
 ### 3. Lanzador de FastTree (`lanzar_fasttree.sh`)
 
 - **Uso:** `/ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_fasttree.sh <alineamiento.fasta>`
