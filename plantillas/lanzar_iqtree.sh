@@ -162,15 +162,77 @@ else
     esac
 fi
 
+# Aviso de ModelFinder en datasets grandes
+IS_MF=0
+if [[ "$MODEL_FLAG" == *"-m MF"* ]]; then IS_MF=1; fi
+if [ "$IS_MF" -eq 1 ] && [ "$NUM_SEQS" -gt 3000 ]; then
+    if [ "$SEQ_TYPE" = "NT" ]; then ALT_MODEL="GTR+F+R4"; else ALT_MODEL="LG+F+G4"; fi
+    echo ""
+    echo " [AVISO] ModelFinder evalúa decenas de modelos y cada uno reoptimiza el árbol completo."
+    echo "         Con ~18 800 secuencias de SARS-CoV-2 tardó entre 1 y 5 h por modelo"
+    echo "         (7 modelos en 16 h). Alternativas: un modelo fijo (GTR+F+R4 fue el mejor"
+    echo "         por BIC en ese caso real; también GTR+F+I+G4) o ejecutar ModelFinder antes"
+    echo "         sobre un subconjunto de ~500 secuencias y usar aquí el modelo elegido."
+    if ask_yn "         ¿Cambiar al modelo fijo $ALT_MODEL?" "s"; then
+        MODEL_FLAG="-m $ALT_MODEL"
+        MODEL_TXT="$ALT_MODEL (modelo fijo en lugar de ModelFinder)"
+        IS_MF=0
+    fi
+fi
+
 echo ""
-echo "2. SOPORTE DE RAMAS Y MÉTODOS DE EVALUACIÓN (BOOTSTRAP)"
-echo "  1) Ultrafast Bootstrap (UFBoot) - 1000 réplicas (-bb 1000) [Rápido y Estándar]"
-echo "  2) Doble test: SH-aLRT + UFBoot (-alrt 1000 -bb 1000) [Máxima Rigurosidad]"
-echo "  3) Test SH-aLRT únicamente (-alrt 1000) [Rápido en datasets grandes]"
+echo "2. TIPO DE BÚSQUEDA DEL ÁRBOL"
+if [ "$NUM_SEQS" -gt 10000 ]; then
+    echo " [AVISO] Dataset de escala pandémica ($NUM_SEQS secuencias). IQ-TREE puede tardar"
+    echo "         días incluso en modo rápido. Para este tamaño se recomiendan herramientas"
+    echo "         específicas como MAPLE, UShER o VeryFastTree."
+fi
+echo "  1) Estándar (100 árboles iniciales + búsqueda estocástica)"
+echo "  2) Rápida (-fast) [Recomendado si > 3000 secuencias]"
+if [ "$NUM_SEQS" -gt 3000 ]; then DEF_SEARCH=2; else DEF_SEARCH=1; fi
+ask_choice "Selección" "$DEF_SEARCH" 2
+FAST=0
+if [ "$CHOICE" -eq 2 ]; then FAST=1; fi
+
+if [ "$FAST" -eq 0 ] && [ "$NUM_SEQS" -gt 3000 ]; then
+    echo ""
+    echo " [AVISO] La búsqueda estándar genera 100 árboles de parsimonia (en un solo núcleo;"
+    echo "         ~20 min cada uno con 18 800 secuencias) y luego optimiza los candidatos."
+    echo "         Puede superar los 5 días del límite de cola."
+    if ask_yn "         ¿Cambiar a búsqueda rápida (-fast)?" "s"; then
+        FAST=1
+    fi
+fi
+
+echo ""
+echo "3. SOPORTE DE RAMAS Y MÉTODOS DE EVALUACIÓN (BOOTSTRAP)"
+if [ "$FAST" -eq 1 ]; then
+    echo "   Con -fast, IQ-TREE no admite UFBoot (-bb); se recomienda SH-aLRT."
+    echo "  1) Ultrafast Bootstrap (UFBoot) - 1000 réplicas (-bb 1000) [No compatible con -fast]"
+    echo "  2) Doble test: SH-aLRT + UFBoot (-alrt 1000 -bb 1000) [No compatible con -fast]"
+    echo "  3) Test SH-aLRT únicamente (-alrt 1000) [Recomendado con -fast]"
+    DEF_BOOT=3
+else
+    echo "  1) Ultrafast Bootstrap (UFBoot) - 1000 réplicas (-bb 1000) [Rápido y Estándar]"
+    echo "  2) Doble test: SH-aLRT + UFBoot (-alrt 1000 -bb 1000) [Máxima Rigurosidad]"
+    echo "  3) Test SH-aLRT únicamente (-alrt 1000) [Rápido en datasets grandes]"
+    DEF_BOOT=1
+fi
 echo "  4) Bootstrap Estándar No Paramétrico (-b 100) [Muy lento; solo conjuntos pequeños]"
 echo "  5) Sin soporte de ramas (generar únicamente la topología ML)"
-ask_choice "Selección" "1" 5
+ask_choice "Selección" "$DEF_BOOT" 5
 BOOT_OPT="$CHOICE"
+
+# UFBoot y -fast son incompatibles en IQ-TREE ("Ultrafast bootstrap does not work with -fast")
+if [ "$FAST" -eq 1 ] && { [ "$BOOT_OPT" -eq 1 ] || [ "$BOOT_OPT" -eq 2 ]; }; then
+    echo ""
+    echo " [AVISO] UFBoot no funciona junto con la búsqueda rápida (-fast)."
+    if ask_yn "         ¿Usar SH-aLRT (-alrt 1000) y mantener -fast? (no = búsqueda estándar)" "s"; then
+        BOOT_OPT=3
+    else
+        FAST=0
+    fi
+fi
 
 case "$BOOT_OPT" in
     1) BOOT_FLAGS="-bb 1000 -bnni";            BOOT_TXT="UFBoot 1000 réplicas + Optimización BNNI (-bb 1000 -bnni)" ;;
@@ -180,12 +242,17 @@ case "$BOOT_OPT" in
         if [ "$NUM_SEQS" -gt 500 ]; then
             echo ""
             echo " [AVISO] El Bootstrap estándar (-b 100) es excesivamente lento para $NUM_SEQS secuencias."
-            if ! ask_yn "         ¿Deseas cambiar a Ultrafast Bootstrap (-bb 1000)?" "s"; then
+            if [ "$FAST" -eq 1 ]; then
+                ALT_BOOT="-alrt 1000"; ALT_BOOT_TXT="SH-aLRT (1000 réplicas)"
+            else
+                ALT_BOOT="-bb 1000 -bnni"; ALT_BOOT_TXT="UFBoot 1000 réplicas + BNNI"
+            fi
+            if ! ask_yn "         ¿Deseas cambiar a $ALT_BOOT_TXT ($ALT_BOOT)?" "s"; then
                 BOOT_FLAGS="-b 100"
                 BOOT_TXT="Bootstrap Estándar (100 réplicas)"
             else
-                BOOT_FLAGS="-bb 1000 -bnni"
-                BOOT_TXT="UFBoot 1000 réplicas + BNNI"
+                BOOT_FLAGS="$ALT_BOOT"
+                BOOT_TXT="$ALT_BOOT_TXT"
             fi
         else
             BOOT_FLAGS="-b 100"
@@ -195,9 +262,37 @@ case "$BOOT_OPT" in
     5) BOOT_FLAGS=""; BOOT_TXT="Sin soporte de ramas" ;;
 esac
 
+if [[ " $BOOT_FLAGS " == *" -bb "* ]] && [ "$NUM_SEQS" -gt 3000 ]; then
+    echo ""
+    echo " [AVISO] Con muchos taxones ($NUM_SEQS) la búsqueda con UFBoot puede no converger"
+    echo "         dentro del límite de la cola."
+    if ask_yn "         ¿Cambiar a SH-aLRT únicamente (-alrt 1000)?" "s"; then
+        BOOT_FLAGS="-alrt 1000"
+        BOOT_TXT="SH-aLRT (1000 réplicas)"
+    fi
+fi
+
+if [[ " $BOOT_FLAGS " == *" -bnni "* ]] && [ "$NUM_SEQS" -gt 1000 ]; then
+    echo ""
+    echo " [AVISO] -bnni añade una optimización NNI por cada réplica de UFBoot; es muy"
+    echo "         costoso con $NUM_SEQS secuencias."
+    if ask_yn "         ¿Quitar -bnni?" "s"; then
+        BOOT_FLAGS="${BOOT_FLAGS% -bnni}"
+        BOOT_TXT="$BOOT_TXT (sin BNNI)"
+    fi
+fi
+
+if [ "$FAST" -eq 1 ]; then
+    SEARCH_FLAG="-fast"
+    SEARCH_TXT="Rápida (-fast)"
+else
+    SEARCH_FLAG=""
+    SEARCH_TXT="Estándar (100 árboles iniciales + búsqueda estocástica)"
+fi
+
 if [ "$NUM_SEQS" -gt 200 ]; then DEF_THR=2; else DEF_THR=1; fi
 echo ""
-echo "3. HILOS DE CÓMPUTO"
+echo "4. HILOS DE CÓMPUTO"
 echo "   IQ-TREE reparte el trabajo por patrones de sitio; en alineamientos con poca"
 echo "   diversidad (p. ej. SARS-CoV-2) más de 4-8 hilos no acelera y solo bloquea CPUs."
 echo "   Algunas fases (los árboles de parsimonia iniciales) usan un solo núcleo, y"
@@ -229,7 +324,7 @@ else
 fi
 
 echo ""
-echo "4. FIJACIÓN DE SEMILLA ALEATORIA PARA REPRODUCIBILIDAD (--seed)"
+echo "5. FIJACIÓN DE SEMILLA ALEATORIA PARA REPRODUCIBILIDAD (--seed)"
 if ask_yn "   ¿Utilizar una semilla aleatoria fija (seed 1253)?" "s"; then
     SEED_FLAG="-seed 1253"
     SEED_TXT="Semilla fija (1253)"
@@ -244,6 +339,10 @@ fi
 FLAGS=()
 FLAGS+=($MODEL_FLAG)
 
+if [ -n "$SEARCH_FLAG" ]; then
+    FLAGS+=("$SEARCH_FLAG")
+fi
+
 if [ -n "$BOOT_FLAGS" ]; then
     FLAGS+=($BOOT_FLAGS)
 fi
@@ -257,21 +356,52 @@ if [ -n "$THREAD_FLAGS" ]; then
     FLAGS+=($THREAD_FLAGS)
 fi
 
-# Factor de esfuerzo para Slurm
-WORK=$(( NUM_SEQS * ALN_LEN ))
-IS_MF=0
-if [[ "$MODEL_FLAG" == *"-m MF"* ]]; then IS_MF=1; fi
-
-if [ "$NUM_SEQS" -gt 5000 ] || [ "$WORK" -gt 2000000000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; MEM_GB=300
-elif [ "$NUM_SEQS" -gt 1000 ] || [ "$IS_MF" -eq 1 ] || [ "$WORK" -gt 100000000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   MEM_GB=128
+# Estimación orientativa del tiempo (0 minutos, 1 horas, 2 días, 3 probablemente no termina)
+HEAVY=0
+if [ "$IS_MF" -eq 1 ] || [ "$FAST" -eq 0 ] || [[ " $BOOT_FLAGS " == *" -bb "* || " $BOOT_FLAGS " == *" -b "* ]]; then
+    HEAVY=1
+fi
+if [ "$NUM_SEQS" -lt 500 ]; then
+    EST_CODE=0
+elif [ "$NUM_SEQS" -le 3000 ]; then
+    EST_CODE=1
+elif [ "$NUM_SEQS" -le 10000 ]; then
+    if [ "$HEAVY" -eq 1 ]; then EST_CODE=2; else EST_CODE=1; fi
 else
-    PARTITION="short_idx";  TIME="12:00:00";   MEM_GB=64
+    if [ "$IS_MF" -eq 1 ] || [ "$FAST" -eq 0 ]; then EST_CODE=3; else EST_CODE=2; fi
+fi
+# El bootstrap no paramétrico multiplica el tiempo ~100 veces
+if [[ " $BOOT_FLAGS " == *" -b "* ]] && [ "$EST_CODE" -lt 2 ]; then
+    EST_CODE=$(( EST_CODE + 1 ))
+fi
+case "$EST_CODE" in
+    0) EST_TXT="Minutos" ;;
+    1) EST_TXT="Horas" ;;
+    2) EST_TXT="1-3 días" ;;
+    3) EST_TXT="Probablemente no termina en 5 días" ;;
+esac
+
+# Cola y tiempo por tramos; si se estiman más de 2 días, cola larga
+WORK=$(( NUM_SEQS * ALN_LEN ))
+if [ "$NUM_SEQS" -gt 5000 ] || [ "$WORK" -gt 2000000000 ] || [ "$EST_CODE" -ge 2 ]; then
+    PARTITION="long_idx";   TIME="5-00:00:00"
+elif [ "$NUM_SEQS" -gt 1000 ] || [ "$IS_MF" -eq 1 ] || [ "$WORK" -gt 100000000 ]; then
+    PARTITION="middle_idx"; TIME="48:00:00"
+else
+    PARTITION="short_idx";  TIME="12:00:00"
 fi
 
-# Añadir límite de memoria explícito a IQ-TREE 2
-FLAGS+=("-mem" "${MEM_GB}G")
+# Memoria por tamaño del alineamiento (independiente de los hilos)
+if [ "$WORK" -le 100000000 ]; then
+    MEM_GB=64
+elif [ "$WORK" -le 1000000000 ]; then
+    MEM_GB=128
+else
+    MEM_GB=256
+fi
+
+# Límite de memoria de IQ-TREE ~8G por debajo de lo reservado en Slurm
+FLAGS+=("-mem" "$(( MEM_GB - 8 ))G")
 IQTREE_EXTRA="${FLAGS[*]}"
 MEM="${MEM_GB}G"
 
@@ -292,6 +422,7 @@ linea
 echo " Archivo de entrada:     $INPUT_FASTA ($NUM_SEQS secuencias, $ALN_LEN pos)"
 echo " Tipo de datos:          $DETECTED_TXT"
 echo " Modelo evolutivo:       $MODEL_TXT"
+echo " Búsqueda del árbol:     $SEARCH_TXT"
 echo " Soporte de ramas:       $BOOT_TXT"
 echo " Reproducibilidad:       $SEED_TXT"
 echo " Hilos:                  $THREAD_TXT"
@@ -305,7 +436,18 @@ echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs (= hilos de IQ-TREE) | Memoria RAM: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
+echo ""
+echo " Estimación orientativa: $EST_TXT (según nº de secuencias, búsqueda, modelo y soporte)"
 linea
+
+if [ "$EST_CODE" -eq 3 ]; then
+    echo ""
+    echo " [AVISO] Con estas opciones el análisis probablemente no termine en el límite de 5 días."
+    if ! ask_yn "¿Seguro que quieres enviarlo así?" "n"; then
+        echo "Operación cancelada. Vuelve a lanzar el script y elige -fast, un modelo fijo o SH-aLRT."
+        exit 0
+    fi
+fi
 
 if ! ask_yn "¿Confirmar y enviar trabajo a Slurm?" "s"; then
     echo "Operación cancelada por el usuario."
