@@ -4,7 +4,7 @@
 
 # ==============================================================================
 # SCRIPT MAESTRO DE EJECUCIÓN DE MAFFT EN NODO DE CÓMPUTO
-# Uso: sbatch master_mafft.sh <INPUT_FASTA> "<MAFFT_EXTRA>"
+# Uso: sbatch master_mafft.sh <INPUT_FASTA> "<MAFFT_EXTRA>" [OUTDIR]
 # ==============================================================================
 
 set -euo pipefail
@@ -19,6 +19,7 @@ fi
 
 INPUT_FASTA="$1"
 MAFFT_EXTRA="${2:-}"
+OUTDIR_ARG="${3:-}"
 
 if [ ! -f "$INPUT_FASTA" ]; then
     echo " [ERROR] El archivo de entrada '$INPUT_FASTA' no existe." >&2
@@ -58,12 +59,15 @@ BASENAME="$(basename "$INPUT_FASTA")"
 BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"; BASENAME="${BASENAME%.fas}"
 
 ORIG_DIR="$(dirname "$(realpath "$INPUT_FASTA")")"
-OUTPUT_FINAL="${ORIG_DIR}/${BASENAME}_aligned.fasta"
-INFO_FILE="${ORIG_DIR}/${BASENAME}_mafft_info.txt"
+# Directorio elegido en el lanzador; sin él, el comportamiento antiguo (junto al FASTA)
+DEST_DIR="${OUTDIR_ARG:-$ORIG_DIR}"
+OUTPUT_FINAL="${DEST_DIR}/${BASENAME}_aligned.fasta"
+INFO_FILE="${DEST_DIR}/${BASENAME}_mafft_info.txt"
 
 # Crear directorio temporal en local scratch del nodo
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"
 mkdir -p "$WORK_DIR"
+mkdir -p "$DEST_DIR"
 
 # Trampa de limpieza automática del directorio scratch al finalizar o abortar
 trap 'rm -rf "$WORK_DIR"' EXIT

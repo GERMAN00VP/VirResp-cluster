@@ -3,7 +3,7 @@
 #SBATCH --ntasks=1
 # ==============================================================================
 # SCRIPT MAESTRO DE FASTTREE  (lo lanza plantillas/lanzar_fasttree.sh)
-# Uso interno:  sbatch master_fasttree.sh <alineamiento.fasta> "<flags de FastTree>"
+# Uso interno:  sbatch master_fasttree.sh <alineamiento.fasta> "<flags de FastTree>" [OUTDIR]
 #
 # Variables opcionales (solo administrador):
 #   VIRRESP_ENV   ruta del entorno conda (por defecto, el del grupo)
@@ -23,6 +23,7 @@ fi
 
 INPUT_FASTA="$1"
 FASTTREE_EXTRA="${2:-}"
+OUTDIR_ARG="${3:-}"
 SECONDS=0
 
 if [ ! -f "$INPUT_FASTA" ]; then
@@ -84,7 +85,8 @@ BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fas}"
 BASENAME="${BASENAME%.fa}";    BASENAME="${BASENAME%.fna}"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-DEST_DIR="$(dirname "$INPUT_FASTA")/${BASENAME}_fasttree_results"
+# Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
+DEST_DIR="${OUTDIR_ARG:-$(dirname "$INPUT_FASTA")/${BASENAME}_fasttree_results}"
 OUT_PREFIX="${BASENAME}_${STAMP}"
 
 # Disco local rápido del nodo; si no existe, se usa un directorio temporal
@@ -127,7 +129,7 @@ if ! "$FASTTREE_BIN" -log result.log ${EXTRA_ARR[@]+"${EXTRA_ARR[@]}"} input.fas
    || [ ! -s result.treefile ] || ! grep -q ';' result.treefile; then
     echo "" >&2
     echo "ERROR CRÍTICO: FastTree no ha podido generar el árbol." >&2
-    echo "  Mira las últimas líneas de fasttree_${SLURM_JOB_ID}.err para ver la causa." >&2
+    echo "  Mira las últimas líneas de $DEST_DIR/slurm_${SLURM_JOB_ID}.err para ver la causa." >&2
     mkdir -p "$DEST_DIR"
     if [ -f result.log ]; then
         cp result.log "$DEST_DIR/${OUT_PREFIX}_FALLO.log" || true

@@ -250,6 +250,11 @@ else
     PARTITION="short_idx";  TIME="12:00:00";   CPUS=16; MEM="32G"
 fi
 
+BASENAME="$(basename "$INPUT_FASTA")"
+BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"; BASENAME="${BASENAME%.fas}"
+
+pedir_outdir "$WORKDIR/${BASENAME}_mafft_results" "$WORKDIR"
+
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
@@ -263,7 +268,7 @@ echo " Orientación de hebras:  $ADJUST_TXT"
 echo " Regiones gappy/hiper:   $GAPPY_TXT"
 echo " Orden de salida:        $REORDER_TXT"
 echo " Banderas finales:       mafft --thread \$SLURM_CPUS_PER_TASK $MAFFT_EXTRA"
-echo " Salida esperada:        $WORKDIR/$(basename "$INPUT_FASTA" | sed -E 's/\.(fasta|fa|fas)$//')_aligned.fasta"
+echo " Salida esperada:        $OUTDIR/${BASENAME}_aligned.fasta"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs | Memoria: $MEM"
@@ -278,20 +283,20 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/mafft_%j.out" \
-    --error="$WORKDIR/mafft_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
     --job-name="MAFFT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$MAFFT_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$MAFFT_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/mafft_${JOB_ID}.err"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

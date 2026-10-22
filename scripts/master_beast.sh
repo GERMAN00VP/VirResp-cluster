@@ -4,7 +4,7 @@
 
 # ==============================================================================
 # SCRIPT MAESTRO DE EJECUCIÓN DE BEAST EN NODO DE CÓMPUTO
-# Uso: sbatch master_beast.sh <INPUT_XML> "<BEAST_EXTRA>"
+# Uso: sbatch master_beast.sh <INPUT_XML> "<BEAST_EXTRA>" [OUTDIR]
 # ==============================================================================
 
 set -euo pipefail
@@ -19,6 +19,7 @@ fi
 
 INPUT_XML="$1"
 BEAST_EXTRA="${2:-}"
+OUTDIR_ARG="${3:-}"
 
 if [ ! -f "$INPUT_XML" ]; then
     echo " [ERROR] El archivo de entrada '$INPUT_XML' no existe." >&2
@@ -56,7 +57,8 @@ fi
 BASENAME="$(basename "$INPUT_XML" .xml)"
 
 ORIG_DIR="$(dirname "$(realpath "$INPUT_XML")")"
-DEST_DIR="${ORIG_DIR}/${BASENAME}_beast_results"
+# Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
+DEST_DIR="${OUTDIR_ARG:-${ORIG_DIR}/${BASENAME}_beast_results}"
 INFO_FILE="${DEST_DIR}/${BASENAME}_beast_info.txt"
 
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"

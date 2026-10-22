@@ -242,6 +242,8 @@ BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.aln}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fna}";   BASENAME="${BASENAME%.aligned}"
 
+pedir_outdir "$WORKDIR/${BASENAME}_iqtree_results" "$WORKDIR"
+
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
@@ -255,7 +257,7 @@ echo " Modelo evolutivo:       $MODEL_TXT"
 echo " Soporte de ramas:       $BOOT_TXT"
 echo " Reproducibilidad:       $SEED_TXT"
 echo " Comand line flags:      iqtree2 -s input.fasta -nt AUTO -ntmax \$SLURM_CPUS_PER_TASK $IQTREE_EXTRA"
-echo " Directorio salida:      $WORKDIR/${BASENAME}_iqtree_results/"
+echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs (multithread OpenMP) | Memoria RAM: $MEM"
@@ -270,22 +272,21 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/iqtree_%j.out" \
-    --error="$WORKDIR/iqtree_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
     --job-name="IQT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$IQTREE_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$IQTREE_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/iqtree_${JOB_ID}.err"
-echo "   - Directorio de resultados:     $WORKDIR/${BASENAME}_iqtree_results/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

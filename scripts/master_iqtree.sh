@@ -4,7 +4,7 @@
 
 # ==============================================================================
 # SCRIPT MAESTRO DE EJECUCIÓN DE IQ-TREE 2 EN NODO DE CÓMPUTO
-# Uso: sbatch master_iqtree.sh <INPUT_FASTA> "<IQTREE_EXTRA>"
+# Uso: sbatch master_iqtree.sh <INPUT_FASTA> "<IQTREE_EXTRA>" [OUTDIR]
 # ==============================================================================
 
 set -euo pipefail
@@ -19,6 +19,7 @@ fi
 
 INPUT_FASTA="$1"
 IQTREE_EXTRA="${2:-}"
+OUTDIR_ARG="${3:-}"
 
 if [ ! -f "$INPUT_FASTA" ]; then
     echo " [ERROR] El archivo de entrada '$INPUT_FASTA' no existe." >&2
@@ -59,7 +60,8 @@ BASENAME="${BASENAME%.fas}";    BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fna}";    BASENAME="${BASENAME%.aligned}"
 
 ORIG_DIR="$(dirname "$(realpath "$INPUT_FASTA")")"
-DEST_DIR="${ORIG_DIR}/${BASENAME}_iqtree_results"
+# Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
+DEST_DIR="${OUTDIR_ARG:-${ORIG_DIR}/${BASENAME}_iqtree_results}"
 INFO_FILE="${DEST_DIR}/${BASENAME}_iqtree_info.txt"
 
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"

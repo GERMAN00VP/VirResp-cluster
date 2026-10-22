@@ -298,6 +298,8 @@ BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.aln}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fna}"
 
+pedir_outdir "$WORKDIR/${BASENAME}_fasttree_results" "$WORKDIR"
+
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
@@ -312,7 +314,7 @@ echo " Optimización Gamma:    $GAMMA_TXT"
 echo " Búsqueda topológica:   $SEARCH_TXT"
 echo " Soporte de ramas:      $SUPPORT_TXT"
 echo " Comand line flags:     FastTree $FASTTREE_EXTRA"
-echo " Directorio salida:     $WORKDIR/${BASENAME}_fasttree_results/"
+echo " Directorio salida:     $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs (OpenMP FastTreeMP) | Memoria: $MEM"
@@ -331,22 +333,21 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/fasttree_%j.out" \
-    --error="$WORKDIR/fasttree_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
     --job-name="FT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$FASTTREE_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$FASTTREE_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/fasttree_${JOB_ID}.err"
-echo "   - Directorio de resultados:     $WORKDIR/${BASENAME}_fasttree_results/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

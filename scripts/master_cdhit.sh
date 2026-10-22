@@ -4,7 +4,7 @@
 
 # ==============================================================================
 # SCRIPT MAESTRO DE EJECUCIÓN DE CD-HIT EN NODO DE CÓMPUTO
-# Uso: sbatch master_cdhit.sh <INPUT_FASTA> <CDHIT_CMD> "<CDHIT_EXTRA>"
+# Uso: sbatch master_cdhit.sh <INPUT_FASTA> <CDHIT_CMD> "<CDHIT_EXTRA>" [OUTDIR]
 # ==============================================================================
 
 set -euo pipefail
@@ -20,6 +20,7 @@ fi
 INPUT_FASTA="$1"
 CDHIT_CMD="${2:-cd-hit-est}"
 CDHIT_EXTRA="${3:-}"
+OUTDIR_ARG="${4:-}"
 
 if [ ! -f "$INPUT_FASTA" ]; then
     echo " [ERROR] El archivo de entrada '$INPUT_FASTA' no existe." >&2
@@ -59,7 +60,8 @@ BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.aligned}"
 
 ORIG_DIR="$(dirname "$(realpath "$INPUT_FASTA")")"
-DEST_DIR="${ORIG_DIR}/${BASENAME}_haplotypes"
+# Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
+DEST_DIR="${OUTDIR_ARG:-${ORIG_DIR}/${BASENAME}_haplotypes}"
 INFO_FILE="${DEST_DIR}/${BASENAME}_cdhit_info.txt"
 
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"

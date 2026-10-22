@@ -118,3 +118,81 @@ fasta_ids_duplicados() {
 fasta_ids_newick() {
     grep -c -E '^>[^[:space:]]*[][(),:;]' "$1" || true
 }
+
+# ------------------------------------------------------------------------------
+# Directorio de salida elegible y versionado (_v2, _v3...)
+# ------------------------------------------------------------------------------
+
+# Uso: OUTDIR=$(resolver_outdir "<entrada_usuario>" "<valor_por_defecto>" "<carpeta_del_input>")
+#   Intro          -> valor por defecto
+#   /ruta/absoluta -> esa ruta
+#   ~/algo         -> $HOME/algo
+#   otra cosa      -> relativa a la carpeta del archivo de entrada
+# Los avisos van a stderr para no contaminar la salida capturada.
+resolver_outdir() {
+    local entrada="$1" defecto="$2" base_input="$3" base candidato n=2
+    entrada="$(echo "$entrada" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ -z "$entrada" ]; then
+        base="$defecto"
+    elif [[ "$entrada" == "~"* ]]; then
+        base="$(realpath -m "${HOME}${entrada#\~}")"
+    elif [[ "$entrada" == /* ]]; then
+        base="$(realpath -m "$entrada")"
+    else
+        base="$(realpath -m "$base_input/$entrada")"
+    fi
+    base="${base%/}"
+    candidato="$base"
+    while [ -e "$candidato" ]; do
+        candidato="${base}_v${n}"
+        n=$(( n + 1 ))
+    done
+    if [ "$candidato" != "$base" ]; then
+        echo " [AVISO] '$base' ya existe; se usará '$candidato'." >&2
+    fi
+    echo "$candidato"
+}
+
+# Pregunta el directorio de salida hasta obtener uno válido.
+# Uso: pedir_outdir "<valor_por_defecto>" "<carpeta_del_input>"   Define: OUTDIR
+pedir_outdir() {
+    local defecto="$1" base_input="$2" entrada limpio padre
+    echo ""
+    echo " DIRECTORIO DE SALIDA"
+    echo "   Ruta absoluta (/...) o ~/...: se usa tal cual."
+    echo "   Nombre o ruta relativa: se crea junto al archivo de entrada ($base_input)."
+    echo "   Si ya existe, se añade _v2, _v3... (nunca se sobrescribe)."
+    while true; do
+        read -r -p "Directorio de salida (Intro = $defecto): " entrada || { echo ""; echo "Entrada cancelada."; exit 1; }
+        limpio="$(echo "$entrada" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        if [ -n "$entrada" ] && [ -z "$limpio" ]; then
+            echo "   Nombre vacío: escribe un nombre o pulsa Intro."
+            continue
+        fi
+        if [[ "$limpio" == *[[:space:]]* ]]; then
+            echo "   El nombre no puede contener espacios."
+            continue
+        fi
+        OUTDIR="$(resolver_outdir "$limpio" "$defecto" "$base_input")"
+        # Carpeta existente más cercana: debe ser un directorio con permiso de escritura
+        padre="$(dirname "$OUTDIR")"
+        while [ ! -e "$padre" ]; do padre="$(dirname "$padre")"; done
+        if [ ! -d "$padre" ] || [ ! -w "$padre" ]; then
+            echo "   Sin permiso de escritura para crear '$OUTDIR' (en '$padre')."
+            continue
+        fi
+        return 0
+    done
+}
+
+# Crea OUTDIR (reserva el nombre), envía el job y lo borra si sbatch falla.
+# Uso: enviar_job <opciones de sbatch y script con argumentos>   Define: JOB_ID
+enviar_job() {
+    local salida
+    mkdir -p "$OUTDIR" || error "No se pudo crear el directorio de salida:" "$OUTDIR"
+    if ! salida=$(sbatch --parsable "$@"); then
+        rmdir "$OUTDIR" 2>/dev/null || true
+        error "sbatch no pudo enviar el trabajo."
+    fi
+    JOB_ID="${salida%%;*}"
+}

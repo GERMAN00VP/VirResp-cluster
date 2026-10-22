@@ -174,6 +174,8 @@ BASENAME="$(basename "$INPUT_FASTA")"
 BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.aligned}"
 
+pedir_outdir "$WORKDIR/${BASENAME}_haplotypes" "$WORKDIR"
+
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
@@ -186,7 +188,7 @@ echo " Herramienta / Modo:     $SEQ_TYPE_TXT"
 echo " Umbral de identidad:    $ID_THRESHOLD (Word size: $WORD_SIZE)"
 echo " Cobertura mínima:       $AS_VAL"
 echo " Comand line flags:      $CDHIT_CMD -i input.fasta -o output_cdhit $CDHIT_EXTRA"
-echo " Directorio salida:      $WORKDIR/${BASENAME}_haplotypes/"
+echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs | Memoria RAM: $MEM"
@@ -201,22 +203,21 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/cdhit_%j.out" \
-    --error="$WORKDIR/cdhit_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
     --job-name="CDHIT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$CDHIT_CMD" "$CDHIT_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$CDHIT_CMD" "$CDHIT_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/cdhit_${JOB_ID}.err"
-echo "   - Directorio de resultados:     $WORKDIR/${BASENAME}_haplotypes/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

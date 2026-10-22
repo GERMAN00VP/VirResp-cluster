@@ -108,6 +108,9 @@ else
     REASON="Dataset estándar (MCMC <= 50M iteraciones)"
 fi
 
+BASENAME="$(basename "$INPUT_XML" .xml)"
+pedir_outdir "$WORKDIR/${BASENAME}_beast_results" "$WORKDIR"
+
 # ------------------------------------------------------------------------------
 # 4. RESUMEN Y CONFIRMACIÓN
 # ------------------------------------------------------------------------------
@@ -119,7 +122,7 @@ echo " Archivo de entrada:     $INPUT_XML"
 echo " Motor de aceleración:   BEAGLE CPU (Aceleración SSE, Doble Precisión)"
 echo " Criterio de recursos:   $REASON"
 echo " Comand line flags:      beast -threads \$SLURM_CPUS_PER_TASK $BEAST_EXTRA input.xml"
-echo " Directorio salida:      $WORKDIR/$(basename "$INPUT_XML" .xml)_beast_results/"
+echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs | Memoria RAM: $MEM"
@@ -134,22 +137,21 @@ fi
 # ------------------------------------------------------------------------------
 # 5. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/beast_%j.out" \
-    --error="$WORKDIR/beast_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
     --job-name="BEAST_MCMC" \
-    "$MASTER_SCRIPT" "$INPUT_XML" "$BEAST_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_XML" "$BEAST_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/beast_${JOB_ID}.out"
-echo "   - Directorio de resultados:     $WORKDIR/$(basename "$INPUT_XML" .xml)_beast_results/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.out"
+echo "   - Directorio de resultados:     $OUTDIR/"
