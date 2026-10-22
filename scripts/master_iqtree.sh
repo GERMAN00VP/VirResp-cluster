@@ -70,7 +70,8 @@ mkdir -p "$DEST_DIR"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 cd "$WORK_DIR"
-cp "$INPUT_FASTA" input.fasta
+# Copia de trabajo sin saltos de línea de Windows (el archivo original no se toca)
+tr -d '\r' < "$INPUT_FASTA" > input.fasta
 
 # ------------------------------------------------------------------------------
 # 4. EJECUCIÓN DEL ANÁLISIS FILOGENÉTICO

@@ -7,45 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_choice() {
-    local ans
-    while true; do
-        read -r -p "$1 [1-$3] (Intro = $2): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$2}"
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "$3" ]; then
-            CHOICE="$ans"
-            return 0
-        fi
-        echo "   Opción no válida: escribe un número entre 1 y $3."
-    done
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -86,7 +52,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_iqtree.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
@@ -96,31 +61,7 @@ fi
 # ------------------------------------------------------------------------------
 # 2. INSPECCIÓN Y VALIDACIÓN DEL ALINEAMIENTO
 # ------------------------------------------------------------------------------
-read -r NUM_SEQS MIN_LEN MAX_LEN TOTAL_CHARS NUC_CHARS GAP_CHARS < <(
-    tr -d '\r' < "$INPUT_FASTA" | awk '
-        BEGIN { n = 0; seen = 0; min = 0; max = 0 }
-        /^>/ {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-            }
-            n++; len = 0; next
-        }
-        {
-            gsub(/[ \t]/, "")
-            len += length($0)
-            s = toupper($0); total += length(s)
-            t = s; nuc += gsub(/[ACGTUN]/, "", t)
-            t = s; gap += gsub(/[-.?]/, "", t)
-        }
-        END {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-            }
-            print n, min, max, total + 0, nuc + 0, gap + 0
-        }'
-)
+fasta_basico "$INPUT_FASTA"
 
 if [ "$NUM_SEQS" -eq 0 ]; then
     error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
@@ -130,24 +71,21 @@ if [ "$NUM_SEQS" -lt 4 ]; then
     error "Se detectaron $NUM_SEQS secuencias." "Se requieren al menos 4 secuencias para construir un árbol filogenético."
 fi
 
-ALN_LEN="$MAX_LEN"
+fasta_longitudes_muestra "$INPUT_FASTA" 50
 
 echo " INSPECCIÓN DEL ALINEAMIENTO"
 echo " -> Archivo:      $INPUT_FASTA"
 echo " -> Secuencias:   $NUM_SEQS"
-echo " -> Longitud:     $ALN_LEN pb/aa"
+echo " -> Longitud:     $MAX_LEN pb/aa (comprobada en $N_MUESTRA primeras + última)"
 
-if [ "$MIN_LEN" -ne "$MAX_LEN" ]; then
-    error "Longitudes desiguales detectadas ($MIN_LEN a $MAX_LEN posiciones)." \
-          "El archivo no está alineado. Ejecuta primero 'lanzar_mafft.sh'."
-fi
+fasta_exigir_alineado
 
-DUPS=$(tr -d '\r' < "$INPUT_FASTA" | grep '^>' | sed 's/^>//; s/[[:space:]].*$//' | sort | uniq -d | head -n 5 || true)
+DUPS=$(fasta_ids_duplicados "$INPUT_FASTA")
 if [ -n "$DUPS" ]; then
     error "Identificadores de secuencia duplicados detectados:" "$(echo "$DUPS" | tr '\n' ' ')"
 fi
 
-BAD_IDS=$(tr -d '\r' < "$INPUT_FASTA" | grep -c -E '^>[^[:space:]]*[][(),:;]' || true)
+BAD_IDS=$(fasta_ids_newick "$INPUT_FASTA")
 if [ "$BAD_IDS" -gt 0 ]; then
     echo ""
     echo " [AVISO] $BAD_IDS nombres contienen caracteres no recomendados en Newick:  ( ) , : ; [ ]"
@@ -161,11 +99,7 @@ linea
 # ------------------------------------------------------------------------------
 # 3. SELECCIÓN DE PARÁMETROS DE EVOLUCIÓN Y MODELOS
 # ------------------------------------------------------------------------------
-RESIDUES=$(( TOTAL_CHARS - GAP_CHARS ))
-if [ "$RESIDUES" -le 0 ]; then
-    error "El alineamiento solo contiene huecos o caracteres ambiguos (-)."
-fi
-NT_PCT=$(( 100 * NUC_CHARS / RESIDUES ))
+fasta_tipo_muestra "$INPUT_FASTA"
 
 if [ "$NT_PCT" -ge 90 ]; then
     SEQ_TYPE="NT"
@@ -177,7 +111,7 @@ fi
 
 echo ""
 echo "1. TIPO DE DATASET Y MODELO DE SUSTITUCIÓN EVOLUTIVA"
-echo "   Autodetección basada en composición: $DETECTED_TXT"
+echo "   Autodetección basada en composición (muestra de ~2 MB): $DETECTED_TXT"
 echo ""
 
 if [ "$SEQ_TYPE" = "NT" ]; then

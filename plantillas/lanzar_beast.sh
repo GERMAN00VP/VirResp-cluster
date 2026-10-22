@@ -7,32 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -74,7 +53,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_beast.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then

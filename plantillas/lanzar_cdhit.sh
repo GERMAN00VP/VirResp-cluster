@@ -7,45 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_choice() {
-    local ans
-    while true; do
-        read -r -p "$1 [1-$3] (Intro = $2): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$2}"
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "$3" ]; then
-            CHOICE="$ans"
-            return 0
-        fi
-        echo "   Opción no válida: escribe un número entre 1 y $3."
-    done
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -86,62 +52,32 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_cdhit.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
     error "No existe o no es ejecutable el script maestro:" "$MASTER_SCRIPT"
 fi
 
-# Sanitizar saltos de línea (\r)
-sed -i 's/\r$//' "$INPUT_FASTA"
-
 # ------------------------------------------------------------------------------
 # 2. INSPECCIÓN DEL ARCHIVO FASTA
 # ------------------------------------------------------------------------------
-read -r NUM_SEQS MIN_LEN MAX_LEN AVG_LEN TOTAL_CHARS NUC_CHARS < <(
-    tr -d '\r' < "$INPUT_FASTA" | awk '
-        BEGIN { n = 0; seen = 0; min = 0; max = 0; total = 0; nuc = 0 }
-        /^>/ {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            n++; len = 0; next
-        }
-        {
-            gsub(/[ \t]/, "")
-            len += length($0)
-            s = toupper($0)
-            t = s; nuc += gsub(/[ACGTUN]/, "", t)
-        }
-        END {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            avg = (n > 0) ? int(total / n) : 0
-            print n, min, max, avg, total + 0, nuc + 0
-        }'
-)
+fasta_basico "$INPUT_FASTA"
 
 if [ "$NUM_SEQS" -eq 0 ]; then
     error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
 fi
 
+fasta_longitudes_muestra "$INPUT_FASTA" 50
+
 echo " INSPECCIÓN DE ENTRADA"
 echo " -> Archivo:            $INPUT_FASTA"
 echo " -> Secuencias totales: $NUM_SEQS"
-echo " -> Longitud estimada:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN)"
+echo " -> Longitud estimada:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN; muestra de $N_MUESTRA primeras)"
 linea
 
-# Autodetección del tipo de secuencia (ADN/ARN vs Proteína)
-PCT_NUC=0
-if [ "$TOTAL_CHARS" -gt 0 ]; then
-    PCT_NUC=$(( 100 * NUC_CHARS / TOTAL_CHARS ))
-fi
+# Autodetección del tipo de secuencia (ADN/ARN vs Proteína) sobre una muestra
+fasta_tipo_muestra "$INPUT_FASTA"
+PCT_NUC="$NT_PCT"
 
 if [ "$PCT_NUC" -ge 85 ]; then
     DEFAULT_SEQ_TYPE=1
@@ -156,7 +92,7 @@ fi
 # ------------------------------------------------------------------------------
 echo ""
 echo "1. TIPO DE SECUENCIA"
-echo "   Autodetección basada en composición: $DETECTED_LABEL"
+echo "   Autodetección basada en composición (muestra de ~2 MB): $DETECTED_LABEL"
 echo "  1) Nucleótidos / ADN / ARN (cd-hit-est)"
 echo "  2) Aminoácidos / Proteínas (cd-hit)"
 ask_choice "Selección" "$DEFAULT_SEQ_TYPE" 2

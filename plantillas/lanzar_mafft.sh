@@ -7,45 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_choice() {
-    local ans
-    while true; do
-        read -r -p "$1 [1-$3] (Intro = $2): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$2}"
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "$3" ]; then
-            CHOICE="$ans"
-            return 0
-        fi
-        echo "   Opción no válida: escribe un número entre 1 y $3."
-    done
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -86,7 +52,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_mafft.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
@@ -96,31 +61,7 @@ fi
 # ------------------------------------------------------------------------------
 # 2. INSPECCIÓN DEL ARCHIVO FASTA
 # ------------------------------------------------------------------------------
-read -r NUM_SEQS MIN_LEN MAX_LEN AVG_LEN < <(
-    tr -d '\r' < "$INPUT_FASTA" | awk '
-        BEGIN { n = 0; seen = 0; min = 0; max = 0; total = 0 }
-        /^>/ {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            n++; len = 0; next
-        }
-        {
-            gsub(/[ \t]/, "")
-            len += length($0)
-        }
-        END {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            avg = (n > 0) ? int(total / n) : 0
-            print n, min, max, avg
-        }'
-)
+fasta_basico "$INPUT_FASTA"
 
 if [ "$NUM_SEQS" -eq 0 ]; then
     error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
@@ -130,14 +71,24 @@ if [ "$NUM_SEQS" -lt 2 ]; then
     error "Se detectó solo $NUM_SEQS secuencia." "Se requieren al menos 2 secuencias para realizar un alineamiento."
 fi
 
+# Solo informativo: MAFFT acepta secuencias de distinta longitud
+fasta_longitudes_muestra "$INPUT_FASTA" 50
+fasta_tipo_muestra "$INPUT_FASTA"
+if [ "$NT_PCT" -ge 85 ]; then
+    DETECTED_TXT="Nucleótidos (ADN/ARN)"
+else
+    DETECTED_TXT="Aminoácidos (Proteínas)"
+fi
+
 echo " INSPECCIÓN DE ENTRADA"
 echo " -> Archivo:            $INPUT_FASTA"
 echo " -> Secuencias totales: $NUM_SEQS"
-echo " -> Rango de longitud:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN)"
+echo " -> Rango de longitud:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN; muestra de $N_MUESTRA primeras)"
+echo " -> Tipo detectado:     $DETECTED_TXT (muestra de ~2 MB)"
 
-if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
+if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$LAST_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
     echo ""
-    echo " [AVISO] Todas las secuencias tienen exactamente la misma longitud ($MAX_LEN)."
+    echo " [AVISO] Las secuencias de la muestra tienen exactamente la misma longitud ($MAX_LEN)."
     echo "         Este archivo podría estar ya alineado."
     if ! ask_yn "         ¿Deseas volver a alinear de todos modos?" "n"; then
         echo "Operación cancelada."
@@ -145,7 +96,7 @@ if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
     fi
 fi
 
-DUPS=$(tr -d '\r' < "$INPUT_FASTA" | grep '^>' | sed 's/^>//; s/[[:space:]].*$//' | sort | uniq -d | head -n 5 || true)
+DUPS=$(fasta_ids_duplicados "$INPUT_FASTA")
 if [ -n "$DUPS" ]; then
     echo ""
     echo " [AVISO] Se detectaron identificadores duplicados en el FASTA:"
