@@ -150,6 +150,7 @@ enviar_job \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
+    --signal=B:USR1@1800 \
     --job-name="BEAST_MCMC" \
     "$MASTER_SCRIPT" "$INPUT_XML" "$BEAST_EXTRA" "$OUTDIR"
 

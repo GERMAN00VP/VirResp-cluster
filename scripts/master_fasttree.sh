@@ -88,6 +88,7 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 # Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
 DEST_DIR="${OUTDIR_ARG:-$(dirname "$INPUT_FASTA")/${BASENAME}_fasttree_results}"
 OUT_PREFIX="${BASENAME}_${STAMP}"
+RUN_LOG="${DEST_DIR}/${BASENAME}_fasttree_run.log"
 
 # Disco local rápido del nodo; si no existe, se usa un directorio temporal
 SCRATCH_ROOT="/local_scratch"
@@ -96,10 +97,20 @@ if [ ! -d "$SCRATCH_ROOT" ] || [ ! -w "$SCRATCH_ROOT" ]; then
 fi
 WORK_DIR="${SCRATCH_ROOT}/${SLURM_JOB_ID}_fasttree"
 mkdir -p "$WORK_DIR"
+mkdir -p "$DEST_DIR"
 
 # Limpieza garantizada: al terminar bien, con error, con scancel o por límite de tiempo
-cleanup() { cd /; rm -rf "$WORK_DIR"; }
+# Si el job no terminó, antes se copia el registro parcial de FastTree.
+COMPLETADO=0
+salvar() {
+    [ "$COMPLETADO" -eq 1 ] && return 0
+    if [ -f "$WORK_DIR/result.log" ]; then
+        cp -f "$WORK_DIR/result.log" "$DEST_DIR/${OUT_PREFIX}_PARCIAL.log" 2>/dev/null || true
+    fi
+}
+cleanup() { salvar; cd /; rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
+trap 'echo " [AVISO] Límite de tiempo cercano: copiando resultados parciales."; salvar' USR1
 trap 'exit 143' TERM INT
 
 cd "$WORK_DIR"
@@ -115,6 +126,8 @@ read -r -a EXTRA_ARR <<< "$FASTTREE_EXTRA"
 echo "=========================================================="
 echo " EJECUCIÓN EN NODO DE CÓMPUTO"
 echo "=========================================================="
+echo " -> Log en tiempo real: $RUN_LOG"
+echo "    (síguelo con: tail -f $RUN_LOG)"
 echo " -> Nodo:        $(hostname)"
 echo " -> Secuencias:  $NUM_SEQS"
 echo " -> Programa:    $FASTTREE_BIN (paquete: $FT_VERSION)"
@@ -125,16 +138,27 @@ echo "=========================================================="
 # ------------------------------------------------------------------------------
 # 3. EJECUCIÓN
 # ------------------------------------------------------------------------------
-if ! "$FASTTREE_BIN" -log result.log ${EXTRA_ARR[@]+"${EXTRA_ARR[@]}"} input.fasta > result.treefile \
-   || [ ! -s result.treefile ] || ! grep -q ';' result.treefile; then
+# En segundo plano + wait: así el trap USR1 se atiende mientras FastTree corre.
+# El progreso (stderr) va al log del directorio de salida; el árbol (stdout) al scratch.
+set +e
+"$FASTTREE_BIN" -log result.log ${EXTRA_ARR[@]+"${EXTRA_ARR[@]}"} input.fasta > result.treefile 2> "$RUN_LOG" &
+TOOL_PID=$!
+FT_EXIT_CODE=0
+while kill -0 "$TOOL_PID" 2>/dev/null; do
+    wait "$TOOL_PID"; FT_EXIT_CODE=$?
+done
+set -e
+
+if [ "$FT_EXIT_CODE" -ne 0 ] || [ ! -s result.treefile ] || ! grep -q ';' result.treefile; then
     echo "" >&2
-    echo "ERROR CRÍTICO: FastTree no ha podido generar el árbol." >&2
-    echo "  Mira las últimas líneas de $DEST_DIR/slurm_${SLURM_JOB_ID}.err para ver la causa." >&2
-    mkdir -p "$DEST_DIR"
+    echo "ERROR CRÍTICO: FastTree no ha podido generar el árbol (código $FT_EXIT_CODE)." >&2
+    echo "  Últimas líneas de $RUN_LOG:" >&2
+    tail -n 20 "$RUN_LOG" >&2 || true
     if [ -f result.log ]; then
         cp result.log "$DEST_DIR/${OUT_PREFIX}_FALLO.log" || true
         echo "  Se ha guardado el registro parcial en: $DEST_DIR/${OUT_PREFIX}_FALLO.log" >&2
     fi
+    COMPLETADO=1   # el registro ya está copiado como _FALLO.log
     exit 1
 fi
 
@@ -155,6 +179,8 @@ fi
     echo "Versión (paquete)     : $FT_VERSION"
     echo "Hilos                 : $THREADS_USED"
     echo "Parámetros            : $FASTTREE_EXTRA"
+    echo "Directorio de salida  : $DEST_DIR"
+    echo "Log de ejecución      : $RUN_LOG"
     echo "Comando               : $FASTTREE_BIN -log ${OUT_PREFIX}.log $FASTTREE_EXTRA ${BASENAME}.fasta > ${OUT_PREFIX}.treefile"
     echo "Cita                  : Price MN, Dehal PS, Arkin AP (2010) FastTree 2 - Approximately"
     echo "                        Maximum-Likelihood Trees for Large Alignments. PLoS ONE 5(3): e9490."
@@ -169,6 +195,7 @@ cp params.txt      "$DEST_DIR/${OUT_PREFIX}_parametros.txt"
 if [ -f result.log ]; then
     cp result.log "$DEST_DIR/${OUT_PREFIX}.log"
 fi
+COMPLETADO=1
 
 if [ ! -s "$DEST_DIR/${OUT_PREFIX}.treefile" ]; then
     echo "ERROR CRÍTICO: no se pudo copiar el árbol a '$DEST_DIR'." >&2

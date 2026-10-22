@@ -296,6 +296,7 @@ enviar_job \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
+    --signal=B:USR1@1800 \
     --job-name="MAFFT_${NUM_SEQS}" \
     "$MASTER_SCRIPT" "$INPUT_FASTA" "$MAFFT_EXTRA" "$OUTDIR"
 

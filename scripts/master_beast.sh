@@ -60,13 +60,22 @@ ORIG_DIR="$(dirname "$(realpath "$INPUT_XML")")"
 # Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
 DEST_DIR="${OUTDIR_ARG:-${ORIG_DIR}/${BASENAME}_beast_results}"
 INFO_FILE="${DEST_DIR}/${BASENAME}_beast_info.txt"
+RUN_LOG="${DEST_DIR}/${BASENAME}_beast_run.log"
 
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"
 mkdir -p "$WORK_DIR"
 mkdir -p "$DEST_DIR"
 
-# Trampa de limpieza automática del directorio scratch al finalizar o abortar
-trap 'rm -rf "$WORK_DIR"' EXIT
+# Antes de borrar el scratch se copian las trazas y árboles parciales si el job no terminó
+# (sirven para revisar la cadena en Tracer o reanudar desde el .state)
+COMPLETADO=0
+salvar() {
+    [ "$COMPLETADO" -eq 1 ] && return 0
+    cp -f "$WORK_DIR"/*.log "$WORK_DIR"/*.trees "$WORK_DIR"/*.ops "$WORK_DIR"/*.state "$DEST_DIR"/ 2>/dev/null || true
+}
+trap 'salvar; rm -rf "$WORK_DIR"' EXIT
+trap 'echo " [AVISO] Límite de tiempo cercano: copiando resultados parciales."; salvar' USR1
+trap 'exit 143' TERM INT
 
 cd "$WORK_DIR"
 cp "$INPUT_XML" input.xml
@@ -77,6 +86,8 @@ cp "$INPUT_XML" input.xml
 echo "=========================================================="
 echo " EJECUCIÓN DE BEAST EN NODO DE CÓMPUTO"
 echo "=========================================================="
+echo " -> Log en tiempo real: $RUN_LOG"
+echo "    (síguelo con: tail -f $RUN_LOG)"
 echo " -> Job ID Slurm:       ${SLURM_JOB_ID}"
 echo " -> Nodo asignado:      $(hostname)"
 echo " -> Hilos asignados:    ${SLURM_CPUS_PER_TASK}"
@@ -85,17 +96,21 @@ echo " -> Carpeta resultados: $DEST_DIR"
 echo " -> Banderas aplicadas: $BEAST_EXTRA"
 echo "=========================================================="
 
+# En segundo plano + wait: así el trap USR1 se atiende mientras BEAST corre
 set +e
-beast -threads "${SLURM_CPUS_PER_TASK}" $BEAST_EXTRA input.xml > beast_run.log 2>&1
-BEAST_EXIT_CODE=$?
+beast -threads "${SLURM_CPUS_PER_TASK}" $BEAST_EXTRA input.xml > "$RUN_LOG" 2>&1 &
+TOOL_PID=$!
+BEAST_EXIT_CODE=0
+while kill -0 "$TOOL_PID" 2>/dev/null; do
+    wait "$TOOL_PID"; BEAST_EXIT_CODE=$?
+done
 set -e
 
 if [ $BEAST_EXIT_CODE -ne 0 ]; then
     echo " [ERROR CRÍTICO] BEAST falló con código de salida $BEAST_EXIT_CODE." >&2
-    if [ -f beast_run.log ]; then
-        echo " --- Últimas líneas del log de BEAST ---" >&2
-        tail -n 30 beast_run.log >&2
-        cp beast_run.log "$DEST_DIR/${BASENAME}_error.log" || true
+    if [ -f "$RUN_LOG" ]; then
+        echo " --- Últimas líneas del log de BEAST ($RUN_LOG) ---" >&2
+        tail -n 30 "$RUN_LOG" >&2
     fi
     exit $BEAST_EXIT_CODE
 fi
@@ -118,6 +133,7 @@ fi
 
 cp *.ops "$DEST_DIR/" 2>/dev/null || true
 cp *.xml.state "$DEST_DIR/" 2>/dev/null || true
+COMPLETADO=1
 
 # Registro de metadatos de ejecución
 {
@@ -129,6 +145,9 @@ cp *.xml.state "$DEST_DIR/" 2>/dev/null || true
     echo " Archivo original:       $INPUT_XML"
     echo " Hash MD5 entrada:       $(md5sum "$INPUT_XML" | awk '{print $1}')"
     echo " Versión ejecutable:     $(beast -version 2>&1 | head -n 1 || echo 'Desconocida')"
+    echo " Hilos usados:           ${SLURM_CPUS_PER_TASK}"
+    echo " Directorio de salida:   $DEST_DIR"
+    echo " Log de ejecución:       $RUN_LOG"
     echo " Comando exacto:         beast -threads ${SLURM_CPUS_PER_TASK} $BEAST_EXTRA input.xml"
     echo "=========================================================="
 } > "$INFO_FILE"

@@ -63,14 +63,24 @@ ORIG_DIR="$(dirname "$(realpath "$INPUT_FASTA")")"
 DEST_DIR="${OUTDIR_ARG:-$ORIG_DIR}"
 OUTPUT_FINAL="${DEST_DIR}/${BASENAME}_aligned.fasta"
 INFO_FILE="${DEST_DIR}/${BASENAME}_mafft_info.txt"
+RUN_LOG="${DEST_DIR}/${BASENAME}_mafft_run.log"
 
 # Crear directorio temporal en local scratch del nodo
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"
 mkdir -p "$WORK_DIR"
 mkdir -p "$DEST_DIR"
 
-# Trampa de limpieza automática del directorio scratch al finalizar o abortar
-trap 'rm -rf "$WORK_DIR"' EXIT
+# Antes de borrar el scratch se copia lo que haya (resultado parcial) si el job no terminó
+COMPLETADO=0
+salvar() {
+    [ "$COMPLETADO" -eq 1 ] && return 0
+    if [ -s "$WORK_DIR/output.fasta" ]; then
+        cp -f "$WORK_DIR/output.fasta" "$DEST_DIR/${BASENAME}_aligned.PARCIAL.fasta" 2>/dev/null || true
+    fi
+}
+trap 'salvar; rm -rf "$WORK_DIR"' EXIT
+trap 'echo " [AVISO] Límite de tiempo cercano: copiando resultados parciales."; salvar' USR1
+trap 'exit 143' TERM INT
 
 cd "$WORK_DIR"
 # Copia de trabajo sin saltos de línea de Windows (el archivo original no se toca)
@@ -82,6 +92,8 @@ tr -d '\r' < "$INPUT_FASTA" > input.fasta
 echo "=========================================================="
 echo " EJECUCIÓN DE MAFFT EN NODO DE CÓMPUTO"
 echo "=========================================================="
+echo " -> Log en tiempo real: $RUN_LOG"
+echo "    (síguelo con: tail -f $RUN_LOG)"
 echo " -> Job ID Slurm:       ${SLURM_JOB_ID}"
 echo " -> Nodo asignado:      $(hostname)"
 echo " -> Hilos asignados:    ${SLURM_CPUS_PER_TASK}"
@@ -91,16 +103,21 @@ echo " -> Banderas aplicadas: $MAFFT_EXTRA"
 echo "=========================================================="
 
 # Comando de ejecución
-# Se desactiva set -e temporalmente para capturar códigos de error de MAFFT explícitamente
+# Se desactiva set -e temporalmente para capturar códigos de error de MAFFT explícitamente.
+# En segundo plano + wait: así el trap USR1 se atiende mientras MAFFT corre.
 set +e
-mafft --thread "${SLURM_CPUS_PER_TASK}" $MAFFT_EXTRA input.fasta > output.fasta 2> mafft_run.log
-MAFFT_EXIT_CODE=$?
+mafft --thread "${SLURM_CPUS_PER_TASK}" $MAFFT_EXTRA input.fasta > output.fasta 2> "$RUN_LOG" &
+TOOL_PID=$!
+MAFFT_EXIT_CODE=0
+while kill -0 "$TOOL_PID" 2>/dev/null; do
+    wait "$TOOL_PID"; MAFFT_EXIT_CODE=$?
+done
 set -e
 
 if [ $MAFFT_EXIT_CODE -ne 0 ]; then
     echo " [ERROR CRÍTICO] MAFFT falló con código de salida $MAFFT_EXIT_CODE." >&2
     echo " --- Últimas líneas del log de MAFFT ---" >&2
-    tail -n 25 mafft_run.log >&2
+    tail -n 25 "$RUN_LOG" >&2
     exit $MAFFT_EXIT_CODE
 fi
 
@@ -121,6 +138,7 @@ fi
 
 # Copiar resultado final a la carpeta del usuario
 cp output.fasta "$OUTPUT_FINAL"
+COMPLETADO=1
 
 # Generar registro de metadatos e información de reproducibilidad
 {
@@ -134,6 +152,9 @@ cp output.fasta "$OUTPUT_FINAL"
     echo " Versión de MAFFT:       $(mafft --version 2>&1 || echo 'Desconocida')"
     echo " Secuencias entrada:     $NUM_IN"
     echo " Secuencias alineadas:   $NUM_OUT"
+    echo " Hilos usados:           ${SLURM_CPUS_PER_TASK}"
+    echo " Directorio de salida:   $DEST_DIR"
+    echo " Log de ejecución:       $RUN_LOG"
     echo " Comando exacto:         mafft --thread ${SLURM_CPUS_PER_TASK} $MAFFT_EXTRA input.fasta"
     echo "=========================================================="
 } > "$INFO_FILE"
