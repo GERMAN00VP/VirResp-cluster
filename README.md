@@ -1,9 +1,5 @@
 ---
-output:
-  html_document: default
-  word_document: default
-  pdf_document: default
----
+
 # Manual del Clúster HPC - Grupo de Virus Respiratorios (VirResp)
 
 Bienvenido al repositorio central de herramientas bioinformáticas del grupo VirResp. Este sistema está diseñado para que puedas ejecutar análisis de desduplicación, alineamiento y filogenia **sin necesidad de programar** ni configurar manualmente el gestor de colas del clúster.
