@@ -89,26 +89,23 @@ BEAST_EXTRA="-beagle -beagle_CPU -beagle_SSE -beagle_double"
 if [ "$CHAIN_LENGTH" -gt 50000000 ] || [ "$NUM_SEQS" -gt 300 ]; then
     PARTITION="long_idx"
     TIME="5-00:00:00"
-    DEF_HILOS=32
     MEM="128G"
     REASON="Dataset masivo o MCMC muy larga (> 50M iteraciones)"
 elif [ "$CHAIN_LENGTH" -le 10000000 ] && [ "$NUM_SEQS" -le 100 ] && [ "$CHAIN_LENGTH" -gt 0 ]; then
     PARTITION="short_idx"
     TIME="12:00:00"
-    DEF_HILOS=16
     MEM="64G"
     REASON="Dataset pequeño / MCMC corta (<= 10M iteraciones)"
 else
     PARTITION="middle_idx"
     TIME="48:00:00"
-    DEF_HILOS=16
     MEM="64G"
     REASON="Dataset estándar (MCMC <= 50M iteraciones)"
 fi
 
-pedir_hilos "HILOS DE CÓMPUTO (-threads)" "$DEF_HILOS" \
-    "BEAGLE reparte la verosimilitud entre hilos; con pocas particiones más hilos no acelera." \
-    "Se reservarán tantas CPUs como hilos."
+# Hilos: BEAGLE reparte la verosimilitud entre hilos; 1 por cada 20 taxones,
+# entre 4 y 32
+calcular_hilos "$NUM_SEQS" 20 4 32
 CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_XML" .xml)"

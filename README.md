@@ -324,7 +324,7 @@ El script analiza el archivo FASTA antes de solicitar parámetros:
 5. **Penalización de Apertura de Gaps (`--op`):**
    - Permite ajustar la penalización por abrir un gap (valor por defecto estándar: 1.53).
 
-6. **Hilos de cómputo (`--thread`):** por defecto 16 (32 con PartTree o más de 10.000 secuencias). Se reservan tantas CPUs como hilos.
+Los hilos (`--thread`) no se preguntan: se calculan solos según el tamaño de los datos (ver [Hilos](#hilos-por-qué-iq-tree-no-usa-32-cpus)).
 
 #### Archivos Generados
 Los resultados se depositan en el directorio de salida elegido (por defecto `<basenombre>_mafft_results/`, junto al FASTA original):
@@ -408,10 +408,7 @@ Antes de configurar la reconstrucción, el script ejecuta un análisis prelimina
    - **Bootstrap Estándar (`-b 100`):** Bootstrap clásico no paramétrico (reservado para alineamientos pequeños $< 500$ muestras).
    - **Sin soporte:** Estimación directa de la topología de Máxima Verosimilitud.
 
-4. **Hilos de cómputo:** 4, 8, 16, AUTO (máximo 8) o personalizado (1-32). Por defecto 8 con más de 200 secuencias y 4 si no. Se reservan tantas CPUs como hilos (8 con AUTO) y se pasa `-T N` a IQ-TREE. Ver [Hilos](#hilos-por-qué-iq-tree-no-usa-32-cpus).
-
-5. **Reproducibilidad:**
-   - Permite fijar opcionalmente una semilla pseudoaleatoria fija (`-seed 1253`) para garantizar la invarianza topológica entre ejecuciones distintas.
+Los hilos y la semilla no se preguntan. Los hilos se calculan solos según el tamaño del alineamiento y se pasan como `-T N` (ver [Hilos](#hilos-por-qué-iq-tree-no-usa-32-cpus)). La semilla es siempre fija (`-seed 1253`), para que dos ejecuciones idénticas den el mismo árbol.
 
 Tras cada elección peligrosa para el tiempo de cálculo aparece un aviso con una alternativa (ver [Avisos de tiempo de IQ-TREE](#avisos-de-tiempo-de-iq-tree)), y el resumen final incluye una **estimación orientativa** del tiempo.
 
@@ -491,7 +488,19 @@ Con un alineamiento real de ~18.800 genomas de SARS-CoV-2, IQ-TREE con `-nt AUTO
 - **Algunas fases no están paralelizadas.** Los 100 árboles de parsimonia iniciales corrieron en un solo núcleo (99 % de CPU en `top`) durante más de 15 h.
 - **Conclusión:** reservar 32 CPUs no acelera nada en estos datasets; solo bloquea recursos del clúster y alarga tu espera en la cola.
 
-Por eso el lanzador pregunta los hilos (por defecto 8, o 4 con $\le 200$ secuencias), reserva exactamente ese número de CPUs y pasa `-T N` a IQ-TREE. La opción AUTO (`-T AUTO --threads-max 8`) mide la eficiencia antes de empezar, lo que añade ~20-30 min en datasets grandes. El resto de lanzadores también preguntan los hilos, y `--cpus-per-task` siempre es igual al número elegido.
+Por eso los lanzadores **no preguntan los hilos**: los calculan con una fórmula según el tamaño de los datos, reservan exactamente ese número de CPUs (`--cpus-per-task`) y se lo pasan al programa. La fórmula es
+
+$$\text{hilos} = \left\lceil \frac{\text{trabajo}}{\text{trabajo por hilo}} \right\rceil \text{, acotado entre un mínimo y un máximo}$$
+
+| Programa | Trabajo | Trabajo por hilo | Mín.–máx. |
+|----------|---------|------------------|-----------|
+| IQ-TREE  | secuencias × posiciones (×4 en proteínas) | 150 millones | 2–8 |
+| MAFFT    | secuencias × longitud media (×4 en L/G/E-INS-i) | 5 millones | 2–32 |
+| FastTree | secuencias × posiciones (×3 con SPR, ×10 con bootstrap) | 50 millones | 2–16 |
+| CD-HIT   | secuencias × longitud media | 20 millones | 2–8 |
+| BEAST    | taxones | 20 | 4–32 |
+
+En IQ-TREE, los ~18.800 genomas de SARS-CoV-2 del ejemplo dan 4 hilos, el óptimo medido. Los máximos son el punto a partir del cual cada programa deja de acelerar.
 
 ---
 

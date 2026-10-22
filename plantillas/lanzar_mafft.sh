@@ -241,16 +241,18 @@ MAFFT_EXTRA="${FLAGS[*]}"
 
 # Cálculo de recursos Slurm
 if [ "$STRAT_OPT" -eq 6 ] || [ "$NUM_SEQS" -gt 10000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; DEF_HILOS=32; MEM="128G"
-elif [ "$STRAT_OPT" -in_set "2 3 4" ] || [ -n "$GAPPY_FLAGS" ] || [ "$NUM_SEQS" -gt 1000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   DEF_HILOS=16; MEM="64G"
+    PARTITION="long_idx";   TIME="5-00:00:00"; MEM="128G"
+elif [[ " 2 3 4 " == *" $STRAT_OPT "* ]] || [ -n "$GAPPY_FLAGS" ] || [ "$NUM_SEQS" -gt 1000 ]; then
+    PARTITION="middle_idx"; TIME="48:00:00";   MEM="64G"
 else
-    PARTITION="short_idx";  TIME="12:00:00";   DEF_HILOS=16; MEM="32G"
+    PARTITION="short_idx";  TIME="12:00:00";   MEM="32G"
 fi
 
-pedir_hilos "6. HILOS DE CÓMPUTO (--thread)" "$DEF_HILOS" \
-    "MAFFT paraleliza el cálculo de distancias y el refinamiento iterativo." \
-    "Se reservarán tantas CPUs como hilos."
+# Hilos: 1 por cada 5 millones de residuos (secuencias x longitud media), x4 en
+# las estrategias iterativas *-INS-i, entre 2 y 32
+TRABAJO_HILOS=$(( NUM_SEQS * AVG_LEN ))
+if [[ " 2 3 4 " == *" $STRAT_OPT "* ]]; then TRABAJO_HILOS=$(( TRABAJO_HILOS * 4 )); fi
+calcular_hilos "$TRABAJO_HILOS" 5000000 2 32
 CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_FASTA")"

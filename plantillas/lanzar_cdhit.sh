@@ -166,9 +166,9 @@ if [ "$NUM_SEQS" -gt 50000 ]; then
     MEM="64G"
 fi
 
-pedir_hilos "4. HILOS DE CÓMPUTO (-T)" 8 \
-    "CD-HIT apenas escala por encima de 8 hilos." \
-    "Se reservarán tantas CPUs como hilos."
+# Hilos: 1 por cada 20 millones de residuos (secuencias x longitud media),
+# entre 2 y 8 (CD-HIT apenas escala por encima de 8)
+calcular_hilos "$(( NUM_SEQS * AVG_LEN ))" 20000000 2 8
 CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_FASTA")"

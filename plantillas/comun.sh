@@ -229,35 +229,16 @@ enviar_job() {
 }
 
 # ------------------------------------------------------------------------------
-# Número de hilos (--cpus-per-task será igual a este valor)
+# Número de hilos calculado automáticamente (--cpus-per-task será igual a este valor)
 # ------------------------------------------------------------------------------
 
-# Pide un número de hilos entre 1 y 32.   Define: HILOS
-pedir_numero_hilos() {
-    local ans
-    while true; do
-        read -r -p "   Número de hilos (1-32): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le 32 ]; then
-            HILOS="$ans"
-            return 0
-        fi
-        echo "   Valor no válido. Debe ser un entero entre 1 y 32."
-    done
-}
-
-# Uso: pedir_hilos "<título numerado>" <defecto> ["línea de ayuda" ...]   Define: HILOS
-pedir_hilos() {
-    local titulo="$1" def="$2" l
-    shift 2
-    echo ""
-    echo "$titulo"
-    for l in "$@"; do echo "   $l"; done
-    echo "  1) $def hilos [Recomendado]"
-    echo "  2) Personalizado (1-32)"
-    ask_choice "Selección" "1" 2
-    if [ "$CHOICE" -eq 1 ]; then
-        HILOS="$def"
-    else
-        pedir_numero_hilos
-    fi
+# Un hilo por cada bloque de trabajo, acotado entre un mínimo y un máximo.
+# HILOS = techo(trabajo / trabajo_por_hilo), limitado a [min, max]
+# Uso: calcular_hilos <trabajo> <trabajo_por_hilo> <min> <max>   Define: HILOS
+calcular_hilos() {
+    local trabajo="$1" por_hilo="$2" min="$3" max="$4"
+    HILOS=$(( (trabajo + por_hilo - 1) / por_hilo ))
+    [ "$HILOS" -lt "$min" ] && HILOS="$min"
+    [ "$HILOS" -gt "$max" ] && HILOS="$max"
+    return 0
 }

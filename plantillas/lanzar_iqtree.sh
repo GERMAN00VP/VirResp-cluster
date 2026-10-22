@@ -288,48 +288,18 @@ else
     SEARCH_TXT="Estándar (100 árboles iniciales + búsqueda estocástica)"
 fi
 
-if [ "$NUM_SEQS" -gt 200 ]; then DEF_THR=2; else DEF_THR=1; fi
-echo ""
-echo "4. HILOS DE CÓMPUTO"
-echo "   IQ-TREE reparte el trabajo por patrones de sitio; en alineamientos con poca"
-echo "   diversidad (p. ej. SARS-CoV-2) más de 4-8 hilos no acelera y solo bloquea CPUs."
-echo "   Algunas fases (los árboles de parsimonia iniciales) usan un solo núcleo, y"
-echo "   reservar más CPUs solo alarga la espera en la cola."
-if [ "$DEF_THR" -eq 2 ]; then
-    echo "  1) 4 hilos"
-    echo "  2) 8 hilos   [Recomendado]"
-else
-    echo "  1) 4 hilos   [Recomendado]"
-    echo "  2) 8 hilos"
-fi
-echo "  3) 16 hilos"
-echo "  4) AUTO (IQ-TREE mide la eficiencia, máximo 8) [añade ~20-30 min de test en datasets grandes]"
-echo "  5) Personalizado (1-32)"
-ask_choice "Selección" "$DEF_THR" 5
+# Hilos: IQ-TREE reparte por patrones de sitio; 1 hilo por cada 150 millones de
+# celdas (secuencias x posiciones), x4 en proteínas (20 estados), entre 2 y 8.
+# Con ~18.800 genomas de SARS-CoV-2 da 4 hilos, el óptimo medido en el clúster
+TRABAJO_HILOS=$(( NUM_SEQS * ALN_LEN ))
+if [ "$SEQ_TYPE" = "AA" ]; then TRABAJO_HILOS=$(( TRABAJO_HILOS * 4 )); fi
+calcular_hilos "$TRABAJO_HILOS" 150000000 2 8
+CPUS="$HILOS"
+THREAD_TXT="$CPUS hilos (-T $CPUS, calculado según el tamaño del alineamiento)"
 
-THREAD_FLAGS=""
-case "$CHOICE" in
-    1) CPUS=4 ;;
-    2) CPUS=8 ;;
-    3) CPUS=16 ;;
-    4) CPUS=8; THREAD_FLAGS="-T AUTO --threads-max 8" ;;
-    5) pedir_numero_hilos; CPUS="$HILOS" ;;
-esac
-if [ -n "$THREAD_FLAGS" ]; then
-    THREAD_TXT="AUTO (máximo 8 hilos; -T AUTO --threads-max 8)"
-else
-    THREAD_TXT="$CPUS hilos (-T $CPUS)"
-fi
-
-echo ""
-echo "5. FIJACIÓN DE SEMILLA ALEATORIA PARA REPRODUCIBILIDAD (--seed)"
-if ask_yn "   ¿Utilizar una semilla aleatoria fija (seed 1253)?" "s"; then
-    SEED_FLAG="-seed 1253"
-    SEED_TXT="Semilla fija (1253)"
-else
-    SEED_FLAG=""
-    SEED_TXT="Semilla aleatoria del sistema"
-fi
+# Semilla fija para que dos ejecuciones idénticas den el mismo resultado
+SEED_FLAG="-seed 1253"
+SEED_TXT="Semilla fija (1253)"
 
 # ------------------------------------------------------------------------------
 # 4. CONSTRUCCIÓN DE COMANDOS Y ESTIMACIÓN DE RECURSOS SLURM
@@ -347,11 +317,6 @@ fi
 
 if [ -n "$SEED_FLAG" ]; then
     FLAGS+=($SEED_FLAG)
-fi
-
-# Con AUTO el lanzador pasa -T y el maestro no lo añade
-if [ -n "$THREAD_FLAGS" ]; then
-    FLAGS+=($THREAD_FLAGS)
 fi
 
 # Estimación orientativa del tiempo (0 minutos, 1 horas, 2 días, 3 probablemente no termina)
@@ -424,11 +389,7 @@ echo " Búsqueda del árbol:     $SEARCH_TXT"
 echo " Soporte de ramas:       $BOOT_TXT"
 echo " Reproducibilidad:       $SEED_TXT"
 echo " Hilos:                  $THREAD_TXT"
-if [ -n "$THREAD_FLAGS" ]; then
-    echo " Comand line flags:      iqtree2 -s input.fasta $IQTREE_EXTRA"
-else
-    echo " Comand line flags:      iqtree2 -s input.fasta -T $CPUS $IQTREE_EXTRA"
-fi
+echo " Comand line flags:      iqtree2 -s input.fasta -T $CPUS $IQTREE_EXTRA"
 echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"

@@ -276,16 +276,16 @@ if [ "$SEARCH_OPT" -eq 2 ];  then EFF_WORK=$(( EFF_WORK * 3 )); fi
 if [ "$SUPPORT_OPT" -eq 2 ]; then EFF_WORK=$(( EFF_WORK * 10 )); fi
 
 if [ "$NUM_SEQS" -gt 50000 ] || [ "$EFF_WORK" -gt 3000000000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; DEF_HILOS=16
+    PARTITION="long_idx";   TIME="5-00:00:00"
 elif [ "$NUM_SEQS" -gt 5000 ] || [ "$EFF_WORK" -gt 200000000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   DEF_HILOS=8
+    PARTITION="middle_idx"; TIME="48:00:00"
 else
-    PARTITION="short_idx";  TIME="12:00:00";   DEF_HILOS=4
+    PARTITION="short_idx";  TIME="12:00:00"
 fi
 
-pedir_hilos "7. HILOS DE CÓMPUTO (FastTreeMP, OMP_NUM_THREADS)" "$DEF_HILOS" \
-    "FastTreeMP escala de forma moderada; más de 16 hilos rara vez acelera." \
-    "Se reservarán tantas CPUs como hilos."
+# Hilos: 1 por cada 50 millones de unidades de esfuerzo, entre 2 y 16
+# (FastTreeMP rara vez acelera por encima de 16)
+calcular_hilos "$EFF_WORK" 50000000 2 16
 CPUS="$HILOS"
 
 if [ "$SEQ_TYPE" = "NT" ]; then BYTES_POS=16; else BYTES_POS=80; fi
