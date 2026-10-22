@@ -243,12 +243,17 @@ MAFFT_EXTRA="${FLAGS[*]}"
 
 # Cálculo de recursos Slurm
 if [ "$STRAT_OPT" -eq 6 ] || [ "$NUM_SEQS" -gt 10000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; CPUS=32; MEM="128G"
+    PARTITION="long_idx";   TIME="5-00:00:00"; DEF_HILOS=32; MEM="128G"
 elif [ "$STRAT_OPT" -in_set "2 3 4" ] || [ -n "$GAPPY_FLAGS" ] || [ "$NUM_SEQS" -gt 1000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   CPUS=16; MEM="64G"
+    PARTITION="middle_idx"; TIME="48:00:00";   DEF_HILOS=16; MEM="64G"
 else
-    PARTITION="short_idx";  TIME="12:00:00";   CPUS=16; MEM="32G"
+    PARTITION="short_idx";  TIME="12:00:00";   DEF_HILOS=16; MEM="32G"
 fi
+
+pedir_hilos "6. HILOS DE CÓMPUTO (--thread)" "$DEF_HILOS" \
+    "MAFFT paraleliza el cálculo de distancias y el refinamiento iterativo." \
+    "Se reservarán tantas CPUs como hilos."
+CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_FASTA")"
 BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"; BASENAME="${BASENAME%.fas}"
@@ -267,11 +272,11 @@ echo " Estrategia principal:   $STRAT_TXT"
 echo " Orientación de hebras:  $ADJUST_TXT"
 echo " Regiones gappy/hiper:   $GAPPY_TXT"
 echo " Orden de salida:        $REORDER_TXT"
-echo " Banderas finales:       mafft --thread \$SLURM_CPUS_PER_TASK $MAFFT_EXTRA"
+echo " Banderas finales:       mafft --thread $CPUS $MAFFT_EXTRA"
 echo " Salida esperada:        $OUTDIR/${BASENAME}_aligned.fasta"
 echo ""
 echo " Reserva en Slurm:"
-echo "   - Cómputo:  $CPUS CPUs | Memoria: $MEM"
+echo "   - Cómputo:  $CPUS CPUs (= hilos de MAFFT) | Memoria: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 linea
 

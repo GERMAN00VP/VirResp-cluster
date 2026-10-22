@@ -89,8 +89,15 @@ echo " -> Carpeta resultados: $DEST_DIR"
 echo " -> Banderas aplicadas: $IQTREE_EXTRA"
 echo "=========================================================="
 
+# Hilos fijos = CPUs reservadas, salvo que el lanzador ya pase -T AUTO --threads-max N
+if [[ " $IQTREE_EXTRA " == *" -T "* ]]; then
+    THREAD_FLAGS=""
+else
+    THREAD_FLAGS="-T ${SLURM_CPUS_PER_TASK}"
+fi
+
 set +e
-iqtree2 -s input.fasta -nt AUTO -ntmax "${SLURM_CPUS_PER_TASK}" $IQTREE_EXTRA --prefix result_tree > iqtree_run.log 2>&1
+iqtree2 -s input.fasta $THREAD_FLAGS $IQTREE_EXTRA --prefix result_tree > iqtree_run.log 2>&1
 IQTREE_EXIT_CODE=$?
 set -e
 
@@ -122,6 +129,13 @@ fi
 
 NUM_IN=$(grep -c '^>' input.fasta || true)
 
+# Hilos reales: con -T AUTO, IQ-TREE escribe el número elegido en su log
+THREADS_REAL="${SLURM_CPUS_PER_TASK}"
+if [ -z "$THREAD_FLAGS" ]; then
+    THREADS_REAL=$(grep -m1 -oE 'BEST NUMBER OF THREADS: [0-9]+' result_tree.log 2>/dev/null | grep -oE '[0-9]+$' || true)
+    THREADS_REAL="${THREADS_REAL:-AUTO (no detectado)}"
+fi
+
 # Registro de métricas e información de reproducibilidad
 {
     echo "=========================================================="
@@ -133,7 +147,8 @@ NUM_IN=$(grep -c '^>' input.fasta || true)
     echo " Hash MD5 entrada:       $(md5sum "$INPUT_FASTA" | awk '{print $1}')"
     echo " Versión ejecutable:     $(iqtree2 --version | head -n 1)"
     echo " Secuencias evaluadas:   $NUM_IN"
-    echo " Comando exacto:         iqtree2 -s input.fasta -nt AUTO -ntmax ${SLURM_CPUS_PER_TASK} $IQTREE_EXTRA --prefix result_tree"
+    echo " Hilos usados:           $THREADS_REAL (CPUs reservadas: ${SLURM_CPUS_PER_TASK})"
+    echo " Comando exacto:         iqtree2 -s input.fasta $THREAD_FLAGS $IQTREE_EXTRA --prefix result_tree"
     echo "=========================================================="
 } > "$INFO_FILE"
 

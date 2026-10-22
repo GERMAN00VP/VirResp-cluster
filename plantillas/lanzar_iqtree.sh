@@ -195,8 +195,41 @@ case "$BOOT_OPT" in
     5) BOOT_FLAGS=""; BOOT_TXT="Sin soporte de ramas" ;;
 esac
 
+if [ "$NUM_SEQS" -gt 200 ]; then DEF_THR=2; else DEF_THR=1; fi
 echo ""
-echo "3. FIJACIÓN DE SEMILLA ALEATORIA PARA REPRODUCIBILIDAD (--seed)"
+echo "3. HILOS DE CÓMPUTO"
+echo "   IQ-TREE reparte el trabajo por patrones de sitio; en alineamientos con poca"
+echo "   diversidad (p. ej. SARS-CoV-2) más de 4-8 hilos no acelera y solo bloquea CPUs."
+echo "   Algunas fases (los árboles de parsimonia iniciales) usan un solo núcleo, y"
+echo "   reservar más CPUs solo alarga la espera en la cola."
+if [ "$DEF_THR" -eq 2 ]; then
+    echo "  1) 4 hilos"
+    echo "  2) 8 hilos   [Recomendado]"
+else
+    echo "  1) 4 hilos   [Recomendado]"
+    echo "  2) 8 hilos"
+fi
+echo "  3) 16 hilos"
+echo "  4) AUTO (IQ-TREE mide la eficiencia, máximo 8) [añade ~20-30 min de test en datasets grandes]"
+echo "  5) Personalizado (1-32)"
+ask_choice "Selección" "$DEF_THR" 5
+
+THREAD_FLAGS=""
+case "$CHOICE" in
+    1) CPUS=4 ;;
+    2) CPUS=8 ;;
+    3) CPUS=16 ;;
+    4) CPUS=8; THREAD_FLAGS="-T AUTO --threads-max 8" ;;
+    5) pedir_numero_hilos; CPUS="$HILOS" ;;
+esac
+if [ -n "$THREAD_FLAGS" ]; then
+    THREAD_TXT="AUTO (máximo 8 hilos; -T AUTO --threads-max 8)"
+else
+    THREAD_TXT="$CPUS hilos (-T $CPUS)"
+fi
+
+echo ""
+echo "4. FIJACIÓN DE SEMILLA ALEATORIA PARA REPRODUCIBILIDAD (--seed)"
 if ask_yn "   ¿Utilizar una semilla aleatoria fija (seed 1253)?" "s"; then
     SEED_FLAG="-seed 1253"
     SEED_TXT="Semilla fija (1253)"
@@ -219,17 +252,22 @@ if [ -n "$SEED_FLAG" ]; then
     FLAGS+=($SEED_FLAG)
 fi
 
+# Con AUTO el lanzador pasa -T y el maestro no lo añade
+if [ -n "$THREAD_FLAGS" ]; then
+    FLAGS+=($THREAD_FLAGS)
+fi
+
 # Factor de esfuerzo para Slurm
 WORK=$(( NUM_SEQS * ALN_LEN ))
 IS_MF=0
 if [[ "$MODEL_FLAG" == *"-m MF"* ]]; then IS_MF=1; fi
 
 if [ "$NUM_SEQS" -gt 5000 ] || [ "$WORK" -gt 2000000000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; CPUS=32; MEM_GB=300
+    PARTITION="long_idx";   TIME="5-00:00:00"; MEM_GB=300
 elif [ "$NUM_SEQS" -gt 1000 ] || [ "$IS_MF" -eq 1 ] || [ "$WORK" -gt 100000000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   CPUS=16; MEM_GB=128
+    PARTITION="middle_idx"; TIME="48:00:00";   MEM_GB=128
 else
-    PARTITION="short_idx";  TIME="12:00:00";   CPUS=16; MEM_GB=64
+    PARTITION="short_idx";  TIME="12:00:00";   MEM_GB=64
 fi
 
 # Añadir límite de memoria explícito a IQ-TREE 2
@@ -256,11 +294,16 @@ echo " Tipo de datos:          $DETECTED_TXT"
 echo " Modelo evolutivo:       $MODEL_TXT"
 echo " Soporte de ramas:       $BOOT_TXT"
 echo " Reproducibilidad:       $SEED_TXT"
-echo " Comand line flags:      iqtree2 -s input.fasta -nt AUTO -ntmax \$SLURM_CPUS_PER_TASK $IQTREE_EXTRA"
+echo " Hilos:                  $THREAD_TXT"
+if [ -n "$THREAD_FLAGS" ]; then
+    echo " Comand line flags:      iqtree2 -s input.fasta $IQTREE_EXTRA"
+else
+    echo " Comand line flags:      iqtree2 -s input.fasta -T $CPUS $IQTREE_EXTRA"
+fi
 echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
-echo "   - Cómputo:  $CPUS CPUs (multithread OpenMP) | Memoria RAM: $MEM"
+echo "   - Cómputo:  $CPUS CPUs (= hilos de IQ-TREE) | Memoria RAM: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 linea
 

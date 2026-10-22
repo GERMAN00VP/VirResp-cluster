@@ -90,8 +90,8 @@ fi
 # Margen de seguridad del 80% para la gestión interna de memoria de CD-HIT
 MEM_MB=$(( RAW_MEM * 80 / 100 ))
 
-# Limitar hilos a máximo 8 (CD-HIT satura su escalabilidad con más de 8 núcleos)
-THREADS=$(( SLURM_CPUS_PER_TASK > 8 ? 8 : SLURM_CPUS_PER_TASK ))
+# Hilos = CPUs reservadas (el lanzador ya pregunta el número, por defecto 8)
+THREADS="${SLURM_CPUS_PER_TASK}"
 
 # ------------------------------------------------------------------------------
 # 5. EJECUCIÓN DE CD-HIT

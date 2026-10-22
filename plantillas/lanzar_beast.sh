@@ -91,22 +91,27 @@ BEAST_EXTRA="-beagle -beagle_CPU -beagle_SSE -beagle_double"
 if [ "$CHAIN_LENGTH" -gt 50000000 ] || [ "$NUM_SEQS" -gt 300 ]; then
     PARTITION="long_idx"
     TIME="5-00:00:00"
-    CPUS=32
+    DEF_HILOS=32
     MEM="128G"
     REASON="Dataset masivo o MCMC muy larga (> 50M iteraciones)"
 elif [ "$CHAIN_LENGTH" -le 10000000 ] && [ "$NUM_SEQS" -le 100 ] && [ "$CHAIN_LENGTH" -gt 0 ]; then
     PARTITION="short_idx"
     TIME="12:00:00"
-    CPUS=16
+    DEF_HILOS=16
     MEM="64G"
     REASON="Dataset pequeño / MCMC corta (<= 10M iteraciones)"
 else
     PARTITION="middle_idx"
     TIME="48:00:00"
-    CPUS=16
+    DEF_HILOS=16
     MEM="64G"
     REASON="Dataset estándar (MCMC <= 50M iteraciones)"
 fi
+
+pedir_hilos "HILOS DE CÓMPUTO (-threads)" "$DEF_HILOS" \
+    "BEAGLE reparte la verosimilitud entre hilos; con pocas particiones más hilos no acelera." \
+    "Se reservarán tantas CPUs como hilos."
+CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_XML" .xml)"
 pedir_outdir "$WORKDIR/${BASENAME}_beast_results" "$WORKDIR"
@@ -121,7 +126,7 @@ linea
 echo " Archivo de entrada:     $INPUT_XML"
 echo " Motor de aceleración:   BEAGLE CPU (Aceleración SSE, Doble Precisión)"
 echo " Criterio de recursos:   $REASON"
-echo " Comand line flags:      beast -threads \$SLURM_CPUS_PER_TASK $BEAST_EXTRA input.xml"
+echo " Comand line flags:      beast -threads $CPUS $BEAST_EXTRA input.xml"
 echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"

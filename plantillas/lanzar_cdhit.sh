@@ -160,15 +160,18 @@ CDHIT_EXTRA="-c $ID_THRESHOLD -n $WORD_SIZE -aS $AS_VAL -g 1 -d 0"
 # ------------------------------------------------------------------------------
 PARTITION="short_idx"
 TIME="04:00:00"
-CPUS=8
 MEM="32G"
 
 if [ "$NUM_SEQS" -gt 50000 ]; then
     PARTITION="middle_idx"
     TIME="24:00:00"
-    CPUS=16
     MEM="64G"
 fi
+
+pedir_hilos "4. HILOS DE CÓMPUTO (-T)" 8 \
+    "CD-HIT apenas escala por encima de 8 hilos." \
+    "Se reservarán tantas CPUs como hilos."
+CPUS="$HILOS"
 
 BASENAME="$(basename "$INPUT_FASTA")"
 BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"
@@ -187,11 +190,11 @@ echo " Archivo de entrada:     $INPUT_FASTA ($NUM_SEQS secuencias)"
 echo " Herramienta / Modo:     $SEQ_TYPE_TXT"
 echo " Umbral de identidad:    $ID_THRESHOLD (Word size: $WORD_SIZE)"
 echo " Cobertura mínima:       $AS_VAL"
-echo " Comand line flags:      $CDHIT_CMD -i input.fasta -o output_cdhit $CDHIT_EXTRA"
+echo " Comand line flags:      $CDHIT_CMD -i input.fasta -o output_cdhit -T $CPUS $CDHIT_EXTRA"
 echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
-echo "   - Cómputo:  $CPUS CPUs | Memoria RAM: $MEM"
+echo "   - Cómputo:  $CPUS CPUs (= hilos de CD-HIT) | Memoria RAM: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 linea
 
