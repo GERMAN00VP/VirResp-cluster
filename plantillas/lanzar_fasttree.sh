@@ -7,45 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_choice() {
-    local ans
-    while true; do
-        read -r -p "$1 [1-$3] (Intro = $2): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$2}"
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "$3" ]; then
-            CHOICE="$ans"
-            return 0
-        fi
-        echo "   Opción no válida: escribe un número entre 1 y $3."
-    done
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -75,9 +41,7 @@ case "$1" in
     *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo con: gunzip $1" ;;
 esac
 
-if ! command -v sbatch >/dev/null 2>&1; then
-    error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
-fi
+comprobar_sbatch
 
 INPUT_FASTA="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_FASTA")"
@@ -86,7 +50,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_fasttree.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
@@ -96,31 +59,7 @@ fi
 # ------------------------------------------------------------------------------
 # 2. INSPECCIÓN DEL ALINEAMIENTO
 # ------------------------------------------------------------------------------
-read -r NUM_SEQS MIN_LEN MAX_LEN TOTAL_CHARS NUC_CHARS GAP_CHARS < <(
-    tr -d '\r' < "$INPUT_FASTA" | awk '
-        BEGIN { n = 0; seen = 0; min = 0; max = 0 }
-        /^>/ {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-            }
-            n++; len = 0; next
-        }
-        {
-            gsub(/[ \t]/, "")
-            len += length($0)
-            s = toupper($0); total += length(s)
-            t = s; nuc += gsub(/[ACGTUN]/, "", t)
-            t = s; gap += gsub(/[-.?]/, "", t)
-        }
-        END {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-            }
-            print n, min, max, total + 0, nuc + 0, gap + 0
-        }'
-)
+fasta_basico "$INPUT_FASTA"
 
 if [ "$NUM_SEQS" -eq 0 ]; then
     error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
@@ -130,24 +69,21 @@ if [ "$NUM_SEQS" -lt 4 ]; then
     error "Se detectaron $NUM_SEQS secuencias." "Se requieren al menos 4 secuencias para construir un árbol."
 fi
 
-ALN_LEN="$MAX_LEN"
+fasta_longitudes_muestra "$INPUT_FASTA" 50
 
 echo " INSPECCIÓN DEL ALINEAMIENTO"
 echo " -> Archivo:      $INPUT_FASTA"
 echo " -> Secuencias:   $NUM_SEQS"
-echo " -> Longitud:     $ALN_LEN pb/aa"
+echo " -> Longitud:     $MAX_LEN pb/aa (comprobada en $N_MUESTRA primeras + última)"
 
-if [ "$MIN_LEN" -ne "$MAX_LEN" ]; then
-    error "Longitudes desiguales detectadas ($MIN_LEN a $MAX_LEN posiciones)." \
-          "El archivo no está alineado. Ejecuta primero 'lanzar_mafft.sh'."
-fi
+fasta_exigir_alineado
 
-DUPS=$(tr -d '\r' < "$INPUT_FASTA" | grep '^>' | sed 's/^>//; s/[[:space:]].*$//' | sort | uniq -d | head -n 5 || true)
+DUPS=$(fasta_ids_duplicados "$INPUT_FASTA")
 if [ -n "$DUPS" ]; then
     error "Identificadores de secuencia duplicados detectados:" "$(echo "$DUPS" | tr '\n' ' ')"
 fi
 
-BAD_IDS=$(tr -d '\r' < "$INPUT_FASTA" | grep -c -E '^>[^[:space:]]*[][(),:;]' || true)
+BAD_IDS=$(fasta_ids_newick "$INPUT_FASTA")
 if [ "$BAD_IDS" -gt 0 ]; then
     echo ""
     echo " [AVISO] $BAD_IDS nombres contienen caracteres no recomendados en Newick:  ( ) , : ; [ ]"
@@ -161,11 +97,7 @@ linea
 # ------------------------------------------------------------------------------
 # 3. SELECCIÓN DE PARÁMETROS FILOGENÉTICOS
 # ------------------------------------------------------------------------------
-RESIDUES=$(( TOTAL_CHARS - GAP_CHARS ))
-if [ "$RESIDUES" -le 0 ]; then
-    error "El alineamiento solo contiene huecos o caracteres ambiguos (-)."
-fi
-NT_PCT=$(( 100 * NUC_CHARS / RESIDUES ))
+fasta_tipo_muestra "$INPUT_FASTA"
 
 if [ "$NT_PCT" -ge 90 ]; then
     DETECTED=1
@@ -177,7 +109,7 @@ fi
 
 echo ""
 echo "1. TIPO DE SECUENCIA"
-echo "   Autodetección basada en composición: $DETECTED_TXT"
+echo "   Autodetección basada en composición (muestra de ~2 MB): $DETECTED_TXT"
 echo "  1) Nucleótidos (ADN / ARN)"
 echo "  2) Aminoácidos (Proteínas)"
 ask_choice "Selección" "$DETECTED" 2
@@ -344,12 +276,17 @@ if [ "$SEARCH_OPT" -eq 2 ];  then EFF_WORK=$(( EFF_WORK * 3 )); fi
 if [ "$SUPPORT_OPT" -eq 2 ]; then EFF_WORK=$(( EFF_WORK * 10 )); fi
 
 if [ "$NUM_SEQS" -gt 50000 ] || [ "$EFF_WORK" -gt 3000000000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; CPUS=16
+    PARTITION="long_idx";   TIME="5-00:00:00"
 elif [ "$NUM_SEQS" -gt 5000 ] || [ "$EFF_WORK" -gt 200000000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   CPUS=8
+    PARTITION="middle_idx"; TIME="48:00:00"
 else
-    PARTITION="short_idx";  TIME="12:00:00";   CPUS=4
+    PARTITION="short_idx";  TIME="12:00:00"
 fi
+
+# Hilos: 1 por cada 50 millones de unidades de esfuerzo, entre 2 y 16
+# (FastTreeMP rara vez acelera por encima de 16)
+calcular_hilos "$EFF_WORK" 50000000 2 16
+CPUS="$HILOS"
 
 if [ "$SEQ_TYPE" = "NT" ]; then BYTES_POS=16; else BYTES_POS=80; fi
 EST_BYTES=$(( 3 * NUM_SEQS * ALN_LEN * BYTES_POS ))
@@ -363,6 +300,8 @@ BASENAME="$(basename "$INPUT_FASTA")"
 BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.aln}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fna}"
+
+pedir_outdir "$WORKDIR/${BASENAME}_fasttree_results" "$WORKDIR"
 
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
@@ -378,10 +317,10 @@ echo " Optimización Gamma:    $GAMMA_TXT"
 echo " Búsqueda topológica:   $SEARCH_TXT"
 echo " Soporte de ramas:      $SUPPORT_TXT"
 echo " Comand line flags:     FastTree $FASTTREE_EXTRA"
-echo " Directorio salida:     $WORKDIR/${BASENAME}_fasttree_results/"
+echo " Directorio salida:     $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
-echo "   - Cómputo:  $CPUS CPUs (OpenMP FastTreeMP) | Memoria: $MEM"
+echo "   - Cómputo:  $CPUS CPUs (= hilos de FastTreeMP) | Memoria: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 if [ -n "$HUGE_NOTE" ]; then
     echo ""
@@ -397,22 +336,22 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/fasttree_%j.out" \
-    --error="$WORKDIR/fasttree_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
+    --signal=B:USR1@1800 \
     --job-name="FT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$FASTTREE_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$FASTTREE_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/fasttree_${JOB_ID}.err"
-echo "   - Directorio de resultados:     $WORKDIR/${BASENAME}_fasttree_results/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

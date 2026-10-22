@@ -7,45 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_choice() {
-    local ans
-    while true; do
-        read -r -p "$1 [1-$3] (Intro = $2): " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$2}"
-        if [[ "$ans" =~ ^[0-9]+$ ]] && [ "$ans" -ge 1 ] && [ "$ans" -le "$3" ]; then
-            CHOICE="$ans"
-            return 0
-        fi
-        echo "   Opción no válida: escribe un número entre 1 y $3."
-    done
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -75,9 +41,7 @@ case "$1" in
     *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo con: gunzip $1" ;;
 esac
 
-if ! command -v sbatch >/dev/null 2>&1; then
-    error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
-fi
+comprobar_sbatch
 
 INPUT_FASTA="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_FASTA")"
@@ -86,7 +50,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_mafft.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
@@ -96,31 +59,7 @@ fi
 # ------------------------------------------------------------------------------
 # 2. INSPECCIÓN DEL ARCHIVO FASTA
 # ------------------------------------------------------------------------------
-read -r NUM_SEQS MIN_LEN MAX_LEN AVG_LEN < <(
-    tr -d '\r' < "$INPUT_FASTA" | awk '
-        BEGIN { n = 0; seen = 0; min = 0; max = 0; total = 0 }
-        /^>/ {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            n++; len = 0; next
-        }
-        {
-            gsub(/[ \t]/, "")
-            len += length($0)
-        }
-        END {
-            if (n > 0) {
-                if (!seen || len < min) { min = len; seen = 1 }
-                if (len > max) max = len
-                total += len
-            }
-            avg = (n > 0) ? int(total / n) : 0
-            print n, min, max, avg
-        }'
-)
+fasta_basico "$INPUT_FASTA"
 
 if [ "$NUM_SEQS" -eq 0 ]; then
     error "No se detectaron cabeceras FASTA (líneas '>') en '$INPUT_FASTA'."
@@ -130,14 +69,24 @@ if [ "$NUM_SEQS" -lt 2 ]; then
     error "Se detectó solo $NUM_SEQS secuencia." "Se requieren al menos 2 secuencias para realizar un alineamiento."
 fi
 
+# Solo informativo: MAFFT acepta secuencias de distinta longitud
+fasta_longitudes_muestra "$INPUT_FASTA" 50
+fasta_tipo_muestra "$INPUT_FASTA"
+if [ "$NT_PCT" -ge 85 ]; then
+    DETECTED_TXT="Nucleótidos (ADN/ARN)"
+else
+    DETECTED_TXT="Aminoácidos (Proteínas)"
+fi
+
 echo " INSPECCIÓN DE ENTRADA"
 echo " -> Archivo:            $INPUT_FASTA"
 echo " -> Secuencias totales: $NUM_SEQS"
-echo " -> Rango de longitud:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN)"
+echo " -> Rango de longitud:  $MIN_LEN a $MAX_LEN pb/aa (Promedio: ~$AVG_LEN; muestra de $N_MUESTRA primeras)"
+echo " -> Tipo detectado:     $DETECTED_TXT (muestra de ~2 MB)"
 
-if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
+if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$LAST_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
     echo ""
-    echo " [AVISO] Todas las secuencias tienen exactamente la misma longitud ($MAX_LEN)."
+    echo " [AVISO] Las secuencias de la muestra tienen exactamente la misma longitud ($MAX_LEN)."
     echo "         Este archivo podría estar ya alineado."
     if ! ask_yn "         ¿Deseas volver a alinear de todos modos?" "n"; then
         echo "Operación cancelada."
@@ -145,7 +94,7 @@ if [ "$MIN_LEN" -eq "$MAX_LEN" ] && [ "$MAX_LEN" -gt 0 ]; then
     fi
 fi
 
-DUPS=$(tr -d '\r' < "$INPUT_FASTA" | grep '^>' | sed 's/^>//; s/[[:space:]].*$//' | sort | uniq -d | head -n 5 || true)
+DUPS=$(fasta_ids_duplicados "$INPUT_FASTA")
 if [ -n "$DUPS" ]; then
     echo ""
     echo " [AVISO] Se detectaron identificadores duplicados en el FASTA:"
@@ -292,12 +241,24 @@ MAFFT_EXTRA="${FLAGS[*]}"
 
 # Cálculo de recursos Slurm
 if [ "$STRAT_OPT" -eq 6 ] || [ "$NUM_SEQS" -gt 10000 ]; then
-    PARTITION="long_idx";   TIME="5-00:00:00"; CPUS=32; MEM="128G"
-elif [ "$STRAT_OPT" -in_set "2 3 4" ] || [ -n "$GAPPY_FLAGS" ] || [ "$NUM_SEQS" -gt 1000 ]; then
-    PARTITION="middle_idx"; TIME="48:00:00";   CPUS=16; MEM="64G"
+    PARTITION="long_idx";   TIME="5-00:00:00"; MEM="128G"
+elif [[ " 2 3 4 " == *" $STRAT_OPT "* ]] || [ -n "$GAPPY_FLAGS" ] || [ "$NUM_SEQS" -gt 1000 ]; then
+    PARTITION="middle_idx"; TIME="48:00:00";   MEM="64G"
 else
-    PARTITION="short_idx";  TIME="12:00:00";   CPUS=16; MEM="32G"
+    PARTITION="short_idx";  TIME="12:00:00";   MEM="32G"
 fi
+
+# Hilos: 1 por cada 5 millones de residuos (secuencias x longitud media), x4 en
+# las estrategias iterativas *-INS-i, entre 2 y 32
+TRABAJO_HILOS=$(( NUM_SEQS * AVG_LEN ))
+if [[ " 2 3 4 " == *" $STRAT_OPT "* ]]; then TRABAJO_HILOS=$(( TRABAJO_HILOS * 4 )); fi
+calcular_hilos "$TRABAJO_HILOS" 5000000 2 32
+CPUS="$HILOS"
+
+BASENAME="$(basename "$INPUT_FASTA")"
+BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"; BASENAME="${BASENAME%.fas}"
+
+pedir_outdir "$WORKDIR/${BASENAME}_mafft_results" "$WORKDIR"
 
 # ------------------------------------------------------------------------------
 # 5. RESUMEN Y CONFIRMACIÓN
@@ -311,11 +272,11 @@ echo " Estrategia principal:   $STRAT_TXT"
 echo " Orientación de hebras:  $ADJUST_TXT"
 echo " Regiones gappy/hiper:   $GAPPY_TXT"
 echo " Orden de salida:        $REORDER_TXT"
-echo " Banderas finales:       mafft --thread \$SLURM_CPUS_PER_TASK $MAFFT_EXTRA"
-echo " Salida esperada:        $WORKDIR/$(basename "$INPUT_FASTA" | sed -E 's/\.(fasta|fa|fas)$//')_aligned.fasta"
+echo " Banderas finales:       mafft --thread $CPUS $MAFFT_EXTRA"
+echo " Salida esperada:        $OUTDIR/${BASENAME}_aligned.fasta"
 echo ""
 echo " Reserva en Slurm:"
-echo "   - Cómputo:  $CPUS CPUs | Memoria: $MEM"
+echo "   - Cómputo:  $CPUS CPUs (= hilos de MAFFT) | Memoria: $MEM"
 echo "   - Tiempo:   máximo $TIME | Cola: $PARTITION"
 linea
 
@@ -327,20 +288,21 @@ fi
 # ------------------------------------------------------------------------------
 # 6. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/mafft_%j.out" \
-    --error="$WORKDIR/mafft_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
+    --signal=B:USR1@1800 \
     --job-name="MAFFT_${NUM_SEQS}" \
-    "$MASTER_SCRIPT" "$INPUT_FASTA" "$MAFFT_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_FASTA" "$MAFFT_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/mafft_${JOB_ID}.err"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.err"
+echo "   - Directorio de resultados:     $OUTDIR/"

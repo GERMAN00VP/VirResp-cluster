@@ -4,7 +4,7 @@
 
 # ==============================================================================
 # SCRIPT MAESTRO DE EJECUCIÓN DE CD-HIT EN NODO DE CÓMPUTO
-# Uso: sbatch master_cdhit.sh <INPUT_FASTA> <CDHIT_CMD> "<CDHIT_EXTRA>"
+# Uso: sbatch master_cdhit.sh <INPUT_FASTA> <CDHIT_CMD> "<CDHIT_EXTRA>" [OUTDIR]
 # ==============================================================================
 
 set -euo pipefail
@@ -20,6 +20,7 @@ fi
 INPUT_FASTA="$1"
 CDHIT_CMD="${2:-cd-hit-est}"
 CDHIT_EXTRA="${3:-}"
+OUTDIR_ARG="${4:-}"
 
 if [ ! -f "$INPUT_FASTA" ]; then
     echo " [ERROR] El archivo de entrada '$INPUT_FASTA' no existe." >&2
@@ -59,18 +60,30 @@ BASENAME="${BASENAME%.fasta}"; BASENAME="${BASENAME%.fa}"
 BASENAME="${BASENAME%.fas}";   BASENAME="${BASENAME%.aligned}"
 
 ORIG_DIR="$(dirname "$(realpath "$INPUT_FASTA")")"
-DEST_DIR="${ORIG_DIR}/${BASENAME}_haplotypes"
+# Directorio elegido en el lanzador; si no se pasa, el comportamiento antiguo
+DEST_DIR="${OUTDIR_ARG:-${ORIG_DIR}/${BASENAME}_haplotypes}"
 INFO_FILE="${DEST_DIR}/${BASENAME}_cdhit_info.txt"
+RUN_LOG="${DEST_DIR}/${BASENAME}_cdhit_run.log"
 
 WORK_DIR="/local_scratch/${SLURM_JOB_ID}"
 mkdir -p "$WORK_DIR"
 mkdir -p "$DEST_DIR"
 
-# Trampa de limpieza automática del directorio scratch al finalizar o abortar
-trap 'rm -rf "$WORK_DIR"' EXIT
+# Antes de borrar el scratch se copia lo que haya (resultado parcial) si el job no terminó
+COMPLETADO=0
+salvar() {
+    [ "$COMPLETADO" -eq 1 ] && return 0
+    [ -s "$WORK_DIR/output_cdhit" ] && cp -f "$WORK_DIR/output_cdhit" "$DEST_DIR/${BASENAME}_representatives.PARCIAL.fasta" 2>/dev/null || true
+    [ -s "$WORK_DIR/output_cdhit.clstr" ] && cp -f "$WORK_DIR/output_cdhit.clstr" "$DEST_DIR/${BASENAME}_raw.PARCIAL.clstr" 2>/dev/null || true
+    return 0
+}
+trap 'salvar; rm -rf "$WORK_DIR"' EXIT
+trap 'echo " [AVISO] Límite de tiempo cercano: copiando resultados parciales."; salvar' USR1
+trap 'exit 143' TERM INT
 
 cd "$WORK_DIR"
-cp "$INPUT_FASTA" input.fasta
+# Copia de trabajo sin saltos de línea de Windows (el archivo original no se toca)
+tr -d '\r' < "$INPUT_FASTA" > input.fasta
 
 # ------------------------------------------------------------------------------
 # 4. CÁLCULO OPTIMIZADO DE RECURSOS (RAM Y HILOS)
@@ -87,8 +100,8 @@ fi
 # Margen de seguridad del 80% para la gestión interna de memoria de CD-HIT
 MEM_MB=$(( RAW_MEM * 80 / 100 ))
 
-# Limitar hilos a máximo 8 (CD-HIT satura su escalabilidad con más de 8 núcleos)
-THREADS=$(( SLURM_CPUS_PER_TASK > 8 ? 8 : SLURM_CPUS_PER_TASK ))
+# Hilos = CPUs reservadas (el lanzador ya pregunta el número, por defecto 8)
+THREADS="${SLURM_CPUS_PER_TASK}"
 
 # ------------------------------------------------------------------------------
 # 5. EJECUCIÓN DE CD-HIT
@@ -96,6 +109,8 @@ THREADS=$(( SLURM_CPUS_PER_TASK > 8 ? 8 : SLURM_CPUS_PER_TASK ))
 echo "=========================================================="
 echo " EJECUCIÓN DE CD-HIT EN NODO DE CÓMPUTO"
 echo "=========================================================="
+echo " -> Log en tiempo real: $RUN_LOG"
+echo "    (síguelo con: tail -f $RUN_LOG)"
 echo " -> Job ID Slurm:       ${SLURM_JOB_ID}"
 echo " -> Nodo asignado:      $(hostname)"
 echo " -> Herramienta:        $CDHIT_CMD"
@@ -106,17 +121,21 @@ echo " -> Carpeta resultados: $DEST_DIR"
 echo " -> Banderas aplicadas: $CDHIT_EXTRA"
 echo "=========================================================="
 
+# En segundo plano + wait: así el trap USR1 se atiende mientras CD-HIT corre
 set +e
-"$CDHIT_CMD" -i input.fasta -o output_cdhit -T "$THREADS" -M "$MEM_MB" $CDHIT_EXTRA > cdhit_run.log 2>&1
-CDHIT_EXIT_CODE=$?
+"$CDHIT_CMD" -i input.fasta -o output_cdhit -T "$THREADS" -M "$MEM_MB" $CDHIT_EXTRA > "$RUN_LOG" 2>&1 &
+TOOL_PID=$!
+CDHIT_EXIT_CODE=0
+while kill -0 "$TOOL_PID" 2>/dev/null; do
+    wait "$TOOL_PID"; CDHIT_EXIT_CODE=$?
+done
 set -e
 
 if [ $CDHIT_EXIT_CODE -ne 0 ]; then
     echo " [ERROR CRÍTICO] CD-HIT falló con código de salida $CDHIT_EXIT_CODE." >&2
-    if [ -f cdhit_run.log ]; then
-        echo " --- Últimas líneas del log de CD-HIT ---" >&2
-        tail -n 30 cdhit_run.log >&2
-        cp cdhit_run.log "$DEST_DIR/${BASENAME}_error.log" || true
+    if [ -f "$RUN_LOG" ]; then
+        echo " --- Últimas líneas del log de CD-HIT ($RUN_LOG) ---" >&2
+        tail -n 30 "$RUN_LOG" >&2
     fi
     exit $CDHIT_EXIT_CODE
 fi
@@ -176,6 +195,7 @@ END {
 cp output_cdhit "$DEST_DIR/${BASENAME}_representatives.fasta"
 cp output_cdhit.clstr "$DEST_DIR/${BASENAME}_raw.clstr"
 cp haplotypes_summary.txt "$DEST_DIR/${BASENAME}_haplotypes.txt"
+COMPLETADO=1
 
 NUM_IN=$(grep -c '^>' input.fasta || true)
 NUM_REPS=$(grep -c '^>' output_cdhit || true)
@@ -192,6 +212,9 @@ NUM_REPS=$(grep -c '^>' output_cdhit || true)
     echo " Herramienta:            $CDHIT_CMD"
     echo " Secuencias entrada:     $NUM_IN"
     echo " Haplotipos/Clusters:    $NUM_REPS"
+    echo " Hilos usados:           $THREADS"
+    echo " Directorio de salida:   $DEST_DIR"
+    echo " Log de ejecución:       $RUN_LOG"
     echo " Comando exacto:         $CDHIT_CMD -i input.fasta -o output_cdhit -T $THREADS -M $MEM_MB $CDHIT_EXTRA"
     echo "=========================================================="
 } > "$INFO_FILE"

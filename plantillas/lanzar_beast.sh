@@ -7,32 +7,11 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# Funciones auxiliares
+# Funciones comunes (linea, error, ask_choice, ask_yn, comprobaciones de FASTA)
 # ------------------------------------------------------------------------------
-linea() { echo "=========================================================="; }
-
-error() {
-    echo ""
-    echo " [ERROR] $1"
-    shift
-    for extra in "$@"; do echo "         $extra"; done
-    echo ""
-    exit 1
-}
-
-ask_yn() {
-    local ans def="$2" hint
-    if [ "$def" = "s" ]; then hint="S/n"; else hint="s/N"; fi
-    while true; do
-        read -r -p "$1 [$hint]: " ans || { echo ""; echo "Entrada cancelada."; exit 1; }
-        ans="${ans:-$def}"
-        case "$ans" in
-            s|S|si|SI|Si|sí|Sí|y|Y) return 0 ;;
-            n|N|no|NO|No)           return 1 ;;
-        esac
-        echo "   Responde 's' (sí) o 'n' (no)."
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=comun.sh
+source "$SCRIPT_DIR/comun.sh"
 
 # ------------------------------------------------------------------------------
 # Encabezado
@@ -63,9 +42,7 @@ case "$1" in
     *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo con: gunzip $1" ;;
 esac
 
-if ! command -v sbatch >/dev/null 2>&1; then
-    error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
-fi
+comprobar_sbatch
 
 INPUT_XML="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_XML")"
@@ -74,7 +51,6 @@ if [ ! -w "$WORKDIR" ]; then
     error "Sin permiso de escritura en la carpeta:" "$WORKDIR"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 MASTER_SCRIPT="$(realpath -m "$SCRIPT_DIR/../scripts/master_beast.sh")"
 
 if [ ! -x "$MASTER_SCRIPT" ]; then
@@ -113,22 +89,27 @@ BEAST_EXTRA="-beagle -beagle_CPU -beagle_SSE -beagle_double"
 if [ "$CHAIN_LENGTH" -gt 50000000 ] || [ "$NUM_SEQS" -gt 300 ]; then
     PARTITION="long_idx"
     TIME="5-00:00:00"
-    CPUS=32
     MEM="128G"
     REASON="Dataset masivo o MCMC muy larga (> 50M iteraciones)"
 elif [ "$CHAIN_LENGTH" -le 10000000 ] && [ "$NUM_SEQS" -le 100 ] && [ "$CHAIN_LENGTH" -gt 0 ]; then
     PARTITION="short_idx"
     TIME="12:00:00"
-    CPUS=16
     MEM="64G"
     REASON="Dataset pequeño / MCMC corta (<= 10M iteraciones)"
 else
     PARTITION="middle_idx"
     TIME="48:00:00"
-    CPUS=16
     MEM="64G"
     REASON="Dataset estándar (MCMC <= 50M iteraciones)"
 fi
+
+# Hilos: BEAGLE reparte la verosimilitud entre hilos; 1 por cada 20 taxones,
+# entre 4 y 32
+calcular_hilos "$NUM_SEQS" 20 4 32
+CPUS="$HILOS"
+
+BASENAME="$(basename "$INPUT_XML" .xml)"
+pedir_outdir "$WORKDIR/${BASENAME}_beast_results" "$WORKDIR"
 
 # ------------------------------------------------------------------------------
 # 4. RESUMEN Y CONFIRMACIÓN
@@ -140,8 +121,8 @@ linea
 echo " Archivo de entrada:     $INPUT_XML"
 echo " Motor de aceleración:   BEAGLE CPU (Aceleración SSE, Doble Precisión)"
 echo " Criterio de recursos:   $REASON"
-echo " Comand line flags:      beast -threads \$SLURM_CPUS_PER_TASK $BEAST_EXTRA input.xml"
-echo " Directorio salida:      $WORKDIR/$(basename "$INPUT_XML" .xml)_beast_results/"
+echo " Comand line flags:      beast -threads $CPUS $BEAST_EXTRA input.xml"
+echo " Directorio salida:      $OUTDIR/"
 echo ""
 echo " Reserva en Slurm:"
 echo "   - Cómputo:  $CPUS CPUs | Memoria RAM: $MEM"
@@ -156,22 +137,22 @@ fi
 # ------------------------------------------------------------------------------
 # 5. ENVÍO DEL JOB A SLURM
 # ------------------------------------------------------------------------------
-JOB_ID=$(sbatch --parsable \
+enviar_job \
     --chdir="$WORKDIR" \
-    --output="$WORKDIR/beast_%j.out" \
-    --error="$WORKDIR/beast_%j.err" \
+    --output="$OUTDIR/slurm_%j.out" \
+    --error="$OUTDIR/slurm_%j.err" \
     --partition="$PARTITION" \
     --time="$TIME" \
     --cpus-per-task="$CPUS" \
     --mem="$MEM" \
+    --signal=B:USR1@1800 \
     --job-name="BEAST_MCMC" \
-    "$MASTER_SCRIPT" "$INPUT_XML" "$BEAST_EXTRA")
-JOB_ID="${JOB_ID%%;*}"
+    "$MASTER_SCRIPT" "$INPUT_XML" "$BEAST_EXTRA" "$OUTDIR"
 
 echo ""
 echo " Job enviado con éxito a Slurm. ID del trabajo: $JOB_ID"
 echo ""
 echo " Seguimiento y gestión:"
 echo "   - Estado de la cola:            squeue -u \$USER"
-echo "   - Ver salida en tiempo real:     tail -f $WORKDIR/beast_${JOB_ID}.out"
-echo "   - Directorio de resultados:     $WORKDIR/$(basename "$INPUT_XML" .xml)_beast_results/"
+echo "   - Ver salida en tiempo real:     tail -f $OUTDIR/slurm_${JOB_ID}.out"
+echo "   - Directorio de resultados:     $OUTDIR/"
