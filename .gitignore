@@ -1,1 +1,10 @@
 chat.gpt
+*.fas
+*.fasta
+*.fa
+*.aln
+*.phy
+*_results*/
+*.out
+*.err
+*.ckp.gz

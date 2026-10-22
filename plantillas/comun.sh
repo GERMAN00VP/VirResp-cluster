@@ -2,7 +2,13 @@
 # ==============================================================================
 # FUNCIONES COMUNES DE LOS LANZADORES (VirResp-cluster)
 # Uso: source "$SCRIPT_DIR/comun.sh"   (no se ejecuta directamente)
+#
+# Modo de prueba sin Slurm: DRY_RUN=1 ./lanzar_X.sh ...
+#   no comprueba sbatch, no crea el directorio de salida e imprime el comando
+#   sbatch completo en lugar de ejecutarlo.
 # ==============================================================================
+
+DRY_RUN="${DRY_RUN:-0}"
 
 # ------------------------------------------------------------------------------
 # Funciones auxiliares de interfaz
@@ -185,10 +191,35 @@ pedir_outdir() {
     done
 }
 
+# Comprueba que existe sbatch (se omite con DRY_RUN=1)
+comprobar_sbatch() {
+    if [ "$DRY_RUN" = "1" ]; then
+        echo " [DRY_RUN] Modo de prueba: no se enviará nada a Slurm."
+        return 0
+    fi
+    if ! command -v sbatch >/dev/null 2>&1; then
+        error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
+    fi
+}
+
 # Crea OUTDIR (reserva el nombre), envía el job y lo borra si sbatch falla.
+# Con DRY_RUN=1 solo imprime el comando.
 # Uso: enviar_job <opciones de sbatch y script con argumentos>   Define: JOB_ID
 enviar_job() {
     local salida
+    if [ "$DRY_RUN" = "1" ]; then
+        echo ""
+        echo " [DRY_RUN] Comando que se ejecutaría (no se crea $OUTDIR):"
+        local arg
+        printf '   sbatch --parsable'
+        # Argumentos con espacios entre comillas simples, para poder copiar y pegar
+        for arg in "$@"; do
+            if [[ "$arg" == *[[:space:]]* ]]; then printf " '%s'" "$arg"; else printf ' %s' "$arg"; fi
+        done
+        printf '\n'
+        JOB_ID="DRYRUN"
+        return 0
+    fi
     mkdir -p "$OUTDIR" || error "No se pudo crear el directorio de salida:" "$OUTDIR"
     if ! salida=$(sbatch --parsable "$@"); then
         rmdir "$OUTDIR" 2>/dev/null || true

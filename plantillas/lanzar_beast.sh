@@ -42,9 +42,7 @@ case "$1" in
     *.gz) error "El archivo está comprimido (.gz)." "Descomprímelo con: gunzip $1" ;;
 esac
 
-if ! command -v sbatch >/dev/null 2>&1; then
-    error "No se encuentra el gestor Slurm (sbatch)." "Ejecuta este script dentro del clúster."
-fi
+comprobar_sbatch
 
 INPUT_XML="$(realpath "$1")"
 WORKDIR="$(dirname "$INPUT_XML")"

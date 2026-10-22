@@ -21,6 +21,7 @@ VirResp-cluster/
 ├── environment.yml       <-- Uso exclusivo del administrador (Germán)
 ├── README.md             <-- Este manual de instrucciones
 ├── plantillas/           <-- Scripts INTERACTIVOS que ejecuta el usuario
+│   ├── comun.sh          <-- Funciones compartidas (no se ejecuta directamente)
 │   ├── lanzar_cdhit.sh
 │   ├── lanzar_mafft.sh
 │   ├── lanzar_fasttree.sh
@@ -52,6 +53,9 @@ VirResp-cluster/
   * [3. FastTree (árbol rápido)](#3-lanzador-de-fasttree-lanzar_fasttreesh)
   * [4. IQ-TREE 2 (árbol riguroso)](#4-lanzador-de-iq-tree-2-lanzar_iqtreesh)
   * [5. BEAST + BEAGLE](#5-lanzador-de-beast--beagle-lanzar_beastsh)
+- [Directorio de salida](#directorio-de-salida)
+- [Hilos: por qué IQ-TREE no usa 32 CPUs](#hilos-por-qué-iq-tree-no-usa-32-cpus)
+- [Avisos de tiempo de IQ-TREE](#avisos-de-tiempo-de-iq-tree)
 - [¿FastTree o IQ-TREE? Cuál elegir](#fasttree-o-iq-tree-cuál-elegir)
 - [Qué hacer si algo falla](#qué-hacer-si-algo-falla)
 - [Monitoreo y Gestión de Trabajos en Slurm](#monitoreo-y-gestión-de-trabajos-en-slurm)
@@ -151,7 +155,7 @@ ls -l
 
 ### Paso 5: Ejecución del flujo bioinformático
 
-Ejecuta siempre los lanzadores **desde la carpeta donde está tu archivo**: así los registros del trabajo quedan junto a tus datos.
+Ejecuta siempre los lanzadores **desde la carpeta donde está tu archivo**. Antes del resumen final, cada lanzador te pregunta el **directorio de salida** (pulsa Intro para usar el de por defecto, junto a tu archivo; ver [Directorio de salida](#directorio-de-salida)). Los registros de Slurm (`slurm_<JOB_ID>.out`/`.err`) y el log de la herramienta se guardan dentro de ese directorio.
 
 #### 5.1. Desduplicación con CD-HIT
 
@@ -169,7 +173,7 @@ Elimina secuencias idénticas o redundantes antes de realizar el alineamiento.
 Alinea las secuencias representativas obtenidas en el paso anterior.
 
 - **Entrada:** `mis_secuencias_representatives.fasta`
-- **Salida esperada:** Fichero alineado `mis_secuencias_representatives_aligned.fasta`.
+- **Salida esperada:** Carpeta `mis_secuencias_representatives_mafft_results/` con el fichero alineado `mis_secuencias_representatives_aligned.fasta`.
 
 ```
 /ruta/carpeta/grupo/VirResp-cluster/plantillas/lanzar_mafft.sh mis_secuencias_representatives.fasta
@@ -183,13 +187,21 @@ Para consultar si tu trabajo ha terminado o sigue en ejecución:
 squeue -u $USER
 ```
 
-Si **no aparece nada**, ha terminado (bien o mal): mira los archivos de resultados y los `.out`/`.err`.
+Si **no aparece nada**, ha terminado (bien o mal): mira los archivos de resultados y los `.out`/`.err` del directorio de salida.
+
+Para ver el progreso de la herramienta mientras corre:
+
+```
+tail -f <directorio_de_salida>/<basenombre>_<herramienta>_run.log
+# por ejemplo:
+tail -f mis_secuencias_representatives_aligned_iqtree_results/mis_secuencias_representatives_aligned_iqtree_run.log
+```
 
 #### 5.3. Árbol filogenético rápido con FastTree
 
 Genera un árbol de Máxima Verosimilitud en minutos u horas, incluso con miles de secuencias. Ideal para explorar tus datos o cuando hay muchísimas secuencias.
 
-- **Entrada:** `mis_secuencias_representatives_aligned.fasta`
+- **Entrada:** `mis_secuencias_representatives_aligned.fasta` (cópialo o muévelo desde la carpeta de resultados de MAFFT, o indica su ruta)
 - **Salida esperada:** Carpeta `mis_secuencias_representatives_aligned_fasttree_results/` con el árbol (`.treefile`), un archivo con los parámetros usados y un registro detallado.
 
 ```
@@ -312,8 +324,11 @@ El script analiza el archivo FASTA antes de solicitar parámetros:
 5. **Penalización de Apertura de Gaps (`--op`):**
    - Permite ajustar la penalización por abrir un gap (valor por defecto estándar: 1.53).
 
+6. **Hilos de cómputo (`--thread`):** por defecto 16 (32 con PartTree o más de 10.000 secuencias). Se reservan tantas CPUs como hilos.
+
 #### Archivos Generados
-Los resultados se depositan en el mismo directorio del FASTA original:
+Los resultados se depositan en el directorio de salida elegido (por defecto `<basenombre>_mafft_results/`, junto al FASTA original):
+- `<basenombre>_mafft_run.log`: Mensajes de progreso de MAFFT (visibles en tiempo real).
 - `<basenombre>_aligned.fasta`: Alineamiento múltiple resultante en formato FASTA.
 - `<basenombre>_mafft_info.txt`: Registro de reproducibilidad con la versión exacta de MAFFT, parámetros de la línea de comandos, recuento de secuencias y hash MD5 del archivo original.
 
@@ -369,7 +384,7 @@ Los resultados se almacenan en la carpeta `<basenombre>_fasttree_results/`:
 #### Inspección del alineamiento e integridad
 Antes de configurar la reconstrucción, el script ejecuta un análisis preliminar del archivo:
 1. Comprueba que el archivo cuenta con un mínimo de 4 secuencias (necesarias para generar una topología filogenética no trivial).
-2. Verifica estrictamente que todas las secuencias tengan la misma longitud exactas (garantiza que el archivo se encuentra alineado).
+2. Verifica que las secuencias tengan la misma longitud (garantiza que el archivo se encuentra alineado). Para que tarde segundos incluso con FASTA de cientos de MB, la longitud se comprueba en **las 50 primeras secuencias y la última**, y el tipo de residuo en una muestra de ~2 MB del inicio. Lo mismo hacen el resto de lanzadores.
 3. Inspecciona la presencia de identificadores duplicados y advierte al usuario de nombres con caracteres incompatibles con el formato Newick `( ) , : ; [ ]`.
 4. Determina automáticamente la composición de residuos (nucleótidos vs. aminoácidos).
 
@@ -382,24 +397,37 @@ Antes de configurar la reconstrucción, el script ejecuta un análisis prelimina
    - **Modelos Explícitos Aminoácidos:** `LG+F+G4`, `WAG+F+G4`, `JTT+F+G4`.
    - **Sintaxis Personalizada:** Introducción manual de cualquier modelo soportado por IQ-TREE 2.
 
-2. **Evaluación de Soporte de Ramas (Bootstrap):**
+2. **Tipo de búsqueda del árbol:**
+   - **Estándar:** 100 árboles de parsimonia iniciales + búsqueda estocástica. Por defecto con $\le 3.000$ secuencias.
+   - **Rápida (`-fast`):** búsqueda similar a FastTree. Por defecto con $> 3.000$ secuencias. IQ-TREE **no admite UFBoot con `-fast`**: el lanzador ofrece SH-aLRT en su lugar.
+
+3. **Evaluación de Soporte de Ramas (Bootstrap):**
    - **Ultrafast Bootstrap con BNNI (`-bb 1000 -bnni`):** Remuestreo ultra-rápido de 1000 réplicas con optimización NNI para evitar sobreestimación de soporte.
    - **Doble Validación (`-alrt 1000 -bb 1000 -bnni`):** Combina el test SH-aLRT con Ultrafast Bootstrap para máxima rigurosidad filogenética.
    - **Test SH-aLRT (`-alrt 1000`):** Cálculo rápido de soporte de ramas locales mediante verosimilitud aproximada.
    - **Bootstrap Estándar (`-b 100`):** Bootstrap clásico no paramétrico (reservado para alineamientos pequeños $< 500$ muestras).
    - **Sin soporte:** Estimación directa de la topología de Máxima Verosimilitud.
 
-3. **Reproducibilidad:**
+4. **Hilos de cómputo:** 4, 8, 16, AUTO (máximo 8) o personalizado (1-32). Por defecto 8 con más de 200 secuencias y 4 si no. Se reservan tantas CPUs como hilos (8 con AUTO) y se pasa `-T N` a IQ-TREE. Ver [Hilos](#hilos-por-qué-iq-tree-no-usa-32-cpus).
+
+5. **Reproducibilidad:**
    - Permite fijar opcionalmente una semilla pseudoaleatoria fija (`-seed 1253`) para garantizar la invarianza topológica entre ejecuciones distintas.
 
+Tras cada elección peligrosa para el tiempo de cálculo aparece un aviso con una alternativa (ver [Avisos de tiempo de IQ-TREE](#avisos-de-tiempo-de-iq-tree)), y el resumen final incluye una **estimación orientativa** del tiempo.
+
+**Recursos:** la memoria va por tramos según secuencias × posiciones (64 GB hasta $10^8$, 128 GB hasta $10^9$, 256 GB por encima) y a IQ-TREE se le pasa `-mem` 8 GB por debajo. Si la estimación supera los 2 días, se usa la cola `long_idx` (5 días).
+
 #### Estructura del Directorio de Resultados
-Cada análisis deposita sus resultados en la carpeta `<basenombre>_iqtree_results/`:
+Cada análisis deposita sus resultados en el directorio de salida elegido (por defecto `<basenombre>_iqtree_results/`):
+- `<basenombre>_iqtree_run.log`: Salida de IQ-TREE **en tiempo real** (`tail -f` para seguir el progreso).
+- `slurm_<JOB_ID>.out` / `slurm_<JOB_ID>.err`: Registros de Slurm.
 - `<basenombre>.treefile`: Árbol de Máxima Verosimilitud final en formato Newick.
 - `<basenombre>.contree`: Árbol de consenso con valores de soporte de ramas en los nodos internos (cuando se activa Bootstrap/SH-aLRT).
 - `<basenombre>.iqtree`: Reporte extenso con la evaluación del modelo, log-likelihood ($\ln L$), frecuencias de nucleótidos/aminoácidos y estadísticas del árbol.
 - `<basenombre>.log`: Registro completo del proceso de optimización numérica.
-- `<basenombre>.mldist`: Matriz de distancias evolutivas estimadas por Máxima Verosimilitud.
-- `<basenombre>_iqtree_info.txt`: Fichero de auditoría con la versión ejecutable, comando exacto utilizado, hash MD5 de la entrada y marca de tiempo.
+- `<basenombre>.mldist`: Matriz de distancias evolutivas estimadas por Máxima Verosimilitud (no se copia si supera 1 GB; con miles de secuencias puede ocupar varios GB).
+- `<basenombre>_iqtree_info.txt`: Fichero de auditoría con la versión ejecutable, comando exacto utilizado, hilos realmente usados, directorio de salida, hash MD5 de la entrada y marca de tiempo.
+- `result_tree.*` (solo si el trabajo **no terminó**): ficheros parciales de IQ-TREE, incluido el checkpoint `result_tree.ckp.gz`. El checkpoint se copia cada 30 minutos mientras corre, y todo lo parcial se copia 30 minutos antes del límite de tiempo, si el trabajo falla o si se cancela.
 
 ---
 
@@ -425,7 +453,67 @@ Los resultados de la simulación MCMC se organizan dentro de la carpeta `<baseno
 - `<basenombre>.log`: Archivo de traza continuo tabulado con el historial de parámetros a posteriori, priors y verosimilitud (compatible con Tracer).
 - `<basenombre>.trees`: Muestra de árboles filogenéticos guardados a lo largo de la MCMC (compatible con TreeAnnotator).
 - `<basenombre>.ops`: Reporte con el rendimiento y grado de aceptación de las operaciones de la cadena MCMC.
-- `<basenombre>_beast_info.txt`: Registro de reproducibilidad con la versión exacta de BEAST, comando de ejecución, hash MD5 del archivo `.xml` y sello temporal.n `long_idx`, tiempo máx: 5 días, 32 CPUs, 128 GB RAM.
+- `<basenombre>_beast_info.txt`: Registro de reproducibilidad con la versión exacta de BEAST, comando de ejecución, hash MD5 del archivo `.xml` y sello temporal.
+- `<basenombre>_beast_run.log`: Salida de BEAST en tiempo real.
+
+Si el trabajo se corta, las trazas, árboles y `.state` parciales se copian a esta carpeta.
+
+---
+
+## Directorio de salida
+
+Todos los lanzadores preguntan, justo antes del resumen final:
+
+```
+Directorio de salida (Intro = <carpeta_del_archivo>/<basenombre>_<herramienta>_results):
+```
+
+| Lo que escribes | Directorio resultante |
+| --- | --- |
+| Intro (nada) | El de por defecto, junto a tu archivo de entrada (en CD-HIT: `<basenombre>_haplotypes`) |
+| Ruta absoluta (`/data/.../mi_carpeta`) | Esa ruta |
+| `~/algo` | `$HOME/algo` |
+| Un nombre (`arbol_final`) o ruta relativa (`analisis/arbol1`) | Se crea **junto a tu archivo de entrada**, no en tu `$HOME` ni en la carpeta desde la que lanzas |
+
+- Si el directorio **ya existe**, nunca se sobrescribe: se usa automáticamente el primer `_v2`, `_v3`... libre, y se avisa con `[AVISO] '<ruta>' ya existe; se usará '<ruta>_v2'`.
+- No se admiten espacios en el nombre; el lanzador vuelve a preguntar.
+- El directorio se crea al confirmar el envío; si `sbatch` falla, se borra (solo si está vacío).
+- Dentro se guardan los resultados, el log de la herramienta (`<basenombre>_<herramienta>_run.log`) y los registros de Slurm (`slurm_<JOB_ID>.out`/`.err`).
+
+---
+
+## Hilos: por qué IQ-TREE no usa 32 CPUs
+
+Con un alineamiento real de ~18.800 genomas de SARS-CoV-2, IQ-TREE con `-nt AUTO` sobre 32 CPUs reservadas acabó usando solo 3 o 4 hilos. No es un fallo:
+
+- **IQ-TREE reparte el trabajo entre hilos por *patrones de sitio* únicos** (columnas distintas del alineamiento), no por secuencias.
+- **SARS-CoV-2 tiene muy pocos patrones** para tantos taxones, porque su diversidad es baja. Cada hilo recibe muy poco trabajo y dominan la sincronización y el acceso a memoria: en el test real, 4 hilos fueron más lentos que 3.
+- **Algunas fases no están paralelizadas.** Los 100 árboles de parsimonia iniciales corrieron en un solo núcleo (99 % de CPU en `top`) durante más de 15 h.
+- **Conclusión:** reservar 32 CPUs no acelera nada en estos datasets; solo bloquea recursos del clúster y alarga tu espera en la cola.
+
+Por eso el lanzador pregunta los hilos (por defecto 8, o 4 con $\le 200$ secuencias), reserva exactamente ese número de CPUs y pasa `-T N` a IQ-TREE. La opción AUTO (`-T AUTO --threads-max 8`) mide la eficiencia antes de empezar, lo que añade ~20-30 min en datasets grandes. El resto de lanzadores también preguntan los hilos, y `--cpus-per-task` siempre es igual al número elegido.
+
+---
+
+## Avisos de tiempo de IQ-TREE
+
+Al elegir cada opción, el lanzador avisa y ofrece cambiar a la alternativa recomendada:
+
+| Condición | Aviso | Alternativa ofrecida |
+| --- | --- | --- |
+| `-m MFP` o `-m MF` con $> 3.000$ secuencias | ModelFinder evalúa decenas de modelos y cada uno reoptimiza el árbol completo. Con ~18.800 secuencias de SARS-CoV-2 tardó 1-5 h por modelo (7 modelos en 16 h). | Modelo fijo `GTR+F+R4` (el mejor por BIC en ese caso real; `LG+F+G4` en proteínas) o `GTR+F+I+G4`. También puedes ejecutar ModelFinder antes sobre un subconjunto de ~500 secuencias. |
+| Búsqueda estándar con $> 3.000$ secuencias | Genera 100 árboles de parsimonia (en un solo núcleo; ~20 min cada uno con 18.800 secuencias) y luego optimiza los candidatos. Puede superar los 5 días. | `-fast` |
+| UFBoot (`-bb`) con $> 3.000$ secuencias | Con muchos taxones la búsqueda con UFBoot puede no converger dentro del límite de la cola. | SH-aLRT solo (`-alrt 1000`) |
+| `-bnni` con $> 1.000$ secuencias | Añade una optimización NNI por réplica; muy costoso con muchos taxones. | Quitar `-bnni` |
+| `-b 100` con $> 500$ secuencias | Bootstrap no paramétrico excesivamente lento. | UFBoot (o SH-aLRT con `-fast`) |
+| $> 10.000$ secuencias (siempre) | Dataset de escala pandémica: IQ-TREE puede tardar días incluso en modo rápido. | Ninguna; para este tamaño se recomiendan MAPLE, UShER o VeryFastTree. |
+
+El resumen final muestra una **estimación orientativa** (no es una garantía):
+
+- **Minutos:** menos de 500 secuencias.
+- **Horas:** 500-3.000 secuencias, o 3.000-10.000 con `-fast`, modelo fijo y SH-aLRT.
+- **1-3 días:** 3.000-10.000 secuencias con opciones pesadas, o más de 10.000 con `-fast` y modelo fijo.
+- **Probablemente no termina en 5 días:** más de 10.000 secuencias con ModelFinder o búsqueda estándar. En este caso el lanzador vuelve a preguntar *"¿Seguro que quieres enviarlo así?"* (por defecto, no).
 
 ---
 
@@ -447,14 +535,15 @@ Ambos hacen el mismo tipo de árbol (máxima verosimilitud). La diferencia es **
 
 ## Qué hacer si algo falla
 
-Primero mira el final de los archivos de registro de tu trabajo (están en la misma carpeta que tu archivo):
+Primero mira el final de los archivos de registro de tu trabajo (están en el directorio de salida que elegiste):
 
 ```
-tail -n 30 fasttree_12345.err
-tail -n 30 fasttree_12345.out
+tail -n 30 <directorio_de_salida>/slurm_12345.err
+tail -n 30 <directorio_de_salida>/slurm_12345.out
+tail -n 30 <directorio_de_salida>/<basenombre>_fasttree_run.log
 ```
 
-> El archivo `.err` de FastTree **siempre tiene mensajes de progreso**. Que tenga texto no significa que haya un error.
+> El log `<basenombre>_<herramienta>_run.log` **siempre tiene mensajes de progreso**. Que tenga texto no significa que haya un error.
 
 | Qué ves | Qué significa | Qué hacer |
 | --- | --- | --- |
@@ -463,7 +552,7 @@ tail -n 30 fasttree_12345.out
 | Aviso de símbolos `( ) , : ; [ ]` en los nombres | Pueden estropear el árbol | Cámbialos por guiones bajos y relanza |
 | `squeue` muestra `PD` mucho tiempo | Esperando turno en la cola | Es normal; si pasan días, avisa al administrador |
 | El trabajo desaparece sin resultados y en el `.err` pone `oom-kill` o `out of memory` | Se quedó sin memoria | Avisa al administrador indicando el número de trabajo |
-| El trabajo desaparece sin resultados y en el `.err` pone `TIME LIMIT` o `DUE TO TIME LIMIT` | Se quedó sin tiempo | Avisa al administrador indicando el número de trabajo |
+| El trabajo desaparece sin resultados y en el `.err` pone `TIME LIMIT` o `DUE TO TIME LIMIT` | Se quedó sin tiempo | Los resultados parciales (en IQ-TREE, el checkpoint `result_tree.ckp.gz`) están en el directorio de salida. Relanza con opciones más ligeras (`-fast`, modelo fijo, SH-aLRT) o avisa al administrador |
 | Mensaje `ERROR CRÍTICO` en el `.out` o `.err` | Falló FastTree o el entorno | Copia las últimas 30 líneas del `.err` y envíaselas al administrador |
 
 Para consultar cuánto usó un trabajo ya terminado (útil para el administrador):
@@ -472,23 +561,24 @@ Para consultar cuánto usó un trabajo ya terminado (útil para el administrador
 sacct -j 12345 --format=JobID,State,Elapsed,MaxRSS,ReqMem
 ```
 
-Si un análisis falla a mitad, el script guarda el registro parcial en la carpeta de resultados con la palabra `FALLO` en el nombre, para ayudar a diagnosticar.
+Si un análisis falla a mitad, el script guarda el registro parcial en la carpeta de resultados (con la palabra `FALLO` o `PARCIAL` en el nombre, o los `result_tree.*` de IQ-TREE), para ayudar a diagnosticar.
 
 ---
 
 ## Monitoreo y Gestión de Trabajos en Slurm
 
-Los lanzadores interactivos guardan los archivos de salida y de error en el mismo directorio donde está tu archivo de entrada (el FASTA o el XML que le pasas como argumento). Por eso se recomienda ejecutar el script desde esa misma carpeta: así los registros quedan junto a tus datos y resultados.
+Los lanzadores interactivos guardan los archivos de salida y de error **dentro del directorio de salida** que eliges al lanzar (por defecto, una carpeta junto a tu archivo de entrada).
 
-### Archivos de salida de Slurm generados:
+### Archivos de seguimiento generados (en el directorio de salida):
 
-- `cdhit_<JOB_ID>.out` / `cdhit_<JOB_ID>.err`
-- `mafft_<JOB_ID>.out` / `mafft_<JOB_ID>.err`
-- `fasttree_<JOB_ID>.out` / `fasttree_<JOB_ID>.err`
-- `iqtree_<JOB_ID>.out` / `iqtree_<JOB_ID>.err`
-- `beast_<JOB_ID>.out` / `beast_<JOB_ID>.err`
+- `slurm_<JOB_ID>.out` / `slurm_<JOB_ID>.err`: registros de Slurm. Al principio del `.out` aparece la ruta del log de la herramienta.
+- `<basenombre>_<herramienta>_run.log`: la salida de la herramienta (CD-HIT, MAFFT, FastTree, IQ-TREE o BEAST), escrita **en tiempo real**.
 
 (`<JOB_ID>` es el número de trabajo que te muestra el lanzador al enviarlo.)
+
+### Resultados parciales si el trabajo se corta
+
+Los trabajos se envían con `--signal=B:USR1@1800`: 30 minutos antes del límite de tiempo, el script copia los resultados parciales al directorio de salida. También los copia si el programa falla o si cancelas el trabajo con `scancel`. En IQ-TREE, además, el checkpoint (`result_tree.ckp.gz`) se copia cada 30 minutos.
 
 ### Comandos de control en la terminal:
 
@@ -496,8 +586,14 @@ Los lanzadores interactivos guardan los archivos de salida y de error en el mism
 # Ver el estado de todos tus trabajos en la cola
 squeue -u $USER
 
-# Monitorear la salida en tiempo real de un proceso en ejecución
-tail -f mafft_12345.out
+# Seguir en tiempo real el log de la herramienta (por ejemplo, IQ-TREE)
+tail -f <directorio_de_salida>/<basenombre>_iqtree_run.log
+
+# Ver los registros de Slurm de un trabajo
+tail -f <directorio_de_salida>/slurm_12345.out
+
+# Entrar al nodo donde corre un trabajo (p. ej. para ver con 'top' cuántos núcleos usa)
+srun --jobid=12345 --overlap --pty bash
 
 # Ver información detallada de un trabajo en específico
 scontrol show job 12345
@@ -554,6 +650,16 @@ Esta sección es solo para quien mantiene el repositorio.
 - `FASTTREE_BIN`: fuerza un ejecutable concreto. Por ejemplo, `FASTTREE_BIN=FastTreeDbl ./lanzar_fasttree.sh x.fasta` usa doble precisión, recomendable si hay conjuntos con secuencias casi idénticas sin desduplicar (esta versión usa un solo núcleo).
 
 **Cómo decide FastTree los recursos.** `lanzar_fasttree.sh` estima el trabajo como secuencias × longitud (multiplicado por 3 en modo cuidadoso y por 4 con bootstrap), y la memoria como 3 × secuencias × longitud × 16 B (nucleótidos) u 80 B (proteínas), +5 GB, redondeada a múltiplos de 8 GB (16-300 GB). Son estimaciones iniciales: contrástalas con `sacct ... MaxRSS` en los primeros trabajos reales y ajusta los umbrales.
+
+**Funciones comunes.** `plantillas/comun.sh` contiene las funciones compartidas por todos los lanzadores (`linea`, `error`, `ask_choice`, `ask_yn`, comprobaciones rápidas de FASTA, directorio de salida, hilos y envío del trabajo). Los lanzadores lo cargan con `source`.
+
+**Modo de prueba sin Slurm (`DRY_RUN=1`).** Permite probar los lanzadores en cualquier máquina: no comprueba `sbatch`, no crea el directorio de salida e imprime el comando `sbatch` completo en lugar de ejecutarlo. Se puede responder por tubería:
+
+```
+printf '1\n\n\n\n\n\ns\n' | DRY_RUN=1 ./plantillas/lanzar_iqtree.sh prueba.fasta
+```
+
+**Maestros.** Reciben el directorio de salida como argumento opcional (`master_X.sh <INPUT> "<FLAGS>" <OUTDIR>`; en CD-HIT es el 4º: `master_cdhit.sh <INPUT> <CMD> "<FLAGS>" <OUTDIR>`). Sin él, usan la carpeta antigua junto al archivo de entrada.
 
 **Revisión del código.** Antes de subir cambios:
 
